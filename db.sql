@@ -113,6 +113,7 @@ CREATE TABLE `pool` (
   `name` varchar(64) NOT NULL,
   `solo` tinyint(4) NOT NULL DEFAULT '0',
   `website` varchar(64) DEFAULT NULL,
+  `graphcolor` char(6) NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `name_UNIQUE` (`name`),
   KEY `fk_pool_group_idx` (`group`),
@@ -148,6 +149,7 @@ CREATE TABLE `poolgroup` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `name` varchar(64) NOT NULL,
   `website` varchar(64) DEFAULT NULL,
+  `graphcolor` char(6) NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `name_UNIQUE` (`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
@@ -247,4 +249,4 @@ CREATE TABLE `txout` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2018-08-01 23:42:17
+-- Dump completed on 2018-08-03 19:35:31

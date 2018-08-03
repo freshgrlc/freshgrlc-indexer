@@ -235,8 +235,9 @@ CREATE TABLE `txout` (
   UNIQUE KEY `txout` (`transaction`,`index`),
   UNIQUE KEY `spentby` (`spentby`),
   KEY `address` (`address`),
-  CONSTRAINT `fk_txout_spentby` FOREIGN KEY (`spentby`) REFERENCES `txin` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-  CONSTRAINT `fk_txout_transaction` FOREIGN KEY (`transaction`) REFERENCES `transaction` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
+  CONSTRAINT `fk_txout_address` FOREIGN KEY (`address`) REFERENCES `address` (`id`),
+  CONSTRAINT `fk_txout_spentby` FOREIGN KEY (`spentby`) REFERENCES `txin` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_txout_transaction` FOREIGN KEY (`transaction`) REFERENCES `transaction` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -250,4 +251,4 @@ CREATE TABLE `txout` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2018-08-03 21:42:34
+-- Dump completed on 2018-08-03 21:44:47

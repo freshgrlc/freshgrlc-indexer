@@ -228,16 +228,15 @@ CREATE TABLE `txout` (
   `transaction` bigint(20) NOT NULL,
   `index` int(11) NOT NULL,
   `type` tinyint(4) NOT NULL,
-  `address` int(11) DEFAULT NULL,
-  `amount` decimal(10,0) DEFAULT NULL,
-  `spendtxin` bigint(20) DEFAULT NULL,
+  `address` int(11) NOT NULL,
+  `amount` decimal(10,0) NOT NULL,
+  `spentby` bigint(20) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `txout` (`transaction`,`index`),
-  KEY `fk_transaction_idx` (`transaction`),
+  UNIQUE KEY `spentby` (`spentby`),
   KEY `address` (`address`),
-  KEY `fk_spendtxin_idx` (`spendtxin`),
-  CONSTRAINT `fk_txout_spendtxin` FOREIGN KEY (`spendtxin`) REFERENCES `txin` (`id`) ON DELETE SET NULL,
-  CONSTRAINT `fk_txout_transaction` FOREIGN KEY (`transaction`) REFERENCES `transaction` (`id`) ON DELETE CASCADE
+  CONSTRAINT `fk_txout_spentby` FOREIGN KEY (`spentby`) REFERENCES `txin` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
+  CONSTRAINT `fk_txout_transaction` FOREIGN KEY (`transaction`) REFERENCES `transaction` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -251,4 +250,4 @@ CREATE TABLE `txout` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2018-08-03 21:14:41
+-- Dump completed on 2018-08-03 21:42:34

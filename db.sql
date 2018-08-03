@@ -210,7 +210,9 @@ CREATE TABLE `txin` (
   `input` bigint(20) NOT NULL,
   PRIMARY KEY (`id`),
   KEY `fk_transaction_idx` (`transaction`),
-  CONSTRAINT `fk_transaction` FOREIGN KEY (`transaction`) REFERENCES `transaction` (`id`)
+  KEY `fk_txin_input_idx` (`input`),
+  CONSTRAINT `fk_txin_input` FOREIGN KEY (`input`) REFERENCES `txout` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
+  CONSTRAINT `fk_txin_transaction` FOREIGN KEY (`transaction`) REFERENCES `transaction` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -249,4 +251,4 @@ CREATE TABLE `txout` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2018-08-03 19:35:31
+-- Dump completed on 2018-08-03 21:14:41

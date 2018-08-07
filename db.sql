@@ -205,7 +205,7 @@ DROP TABLE IF EXISTS `txin`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
 CREATE TABLE `txin` (
-  `id` bigint(20) NOT NULL,
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `transaction` bigint(20) NOT NULL,
   `index` int(11) NOT NULL,
   `input` bigint(20) NOT NULL,

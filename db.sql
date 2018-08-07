@@ -26,6 +26,7 @@ CREATE TABLE `address` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `type` tinyint(4) NOT NULL,
   `address` varchar(64) DEFAULT NULL,
+  `raw` varchar(256) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `address` (`address`),
   KEY `addresstype` (`type`,`address`)
@@ -251,4 +252,4 @@ CREATE TABLE `txout` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2018-08-07 21:26:53
+-- Dump completed on 2018-08-08  0:19:50

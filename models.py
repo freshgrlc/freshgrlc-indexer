@@ -3,7 +3,6 @@ from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()
-Session = sessionmaker(bind=create_engine("mysql://indexer:indexer@localhost/blockchain", encoding='utf8', echo=True))
 
 class Address(Base):
     __tablename__ = 'address'

@@ -45,7 +45,7 @@ CREATE TABLE `block` (
   `height` int(11) DEFAULT NULL,
   `size` int(11) NOT NULL,
   `timestamp` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `difficulty` decimal(10,0) NOT NULL,
+  `difficulty` decimal(8,3) NOT NULL,
   `firstseen` timestamp NULL DEFAULT NULL,
   `relayedby` varchar(48) DEFAULT NULL,
   `miner` int(11) DEFAULT NULL,
@@ -184,8 +184,8 @@ CREATE TABLE `transaction` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `txid` binary(32) NOT NULL,
   `size` int(11) NOT NULL,
-  `fee` decimal(10,0) NOT NULL,
-  `totalvalue` decimal(10,0) NOT NULL,
+  `fee` decimal(16,8) NOT NULL,
+  `totalvalue` decimal(16,8) NOT NULL,
   `firstseen` datetime DEFAULT NULL,
   `relayedby` varchar(48) DEFAULT NULL,
   `confirmation` bigint(20) DEFAULT NULL,
@@ -229,7 +229,7 @@ CREATE TABLE `txout` (
   `index` int(11) NOT NULL,
   `type` tinyint(4) NOT NULL,
   `address` int(11) NOT NULL,
-  `amount` decimal(10,0) NOT NULL,
+  `amount` decimal(16,8) NOT NULL,
   `spentby` bigint(20) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `txout` (`transaction`,`index`),
@@ -251,4 +251,4 @@ CREATE TABLE `txout` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2018-08-03 21:44:47
+-- Dump completed on 2018-08-07 21:26:53

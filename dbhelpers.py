@@ -193,7 +193,8 @@ class DatabaseIO(object):
         self.session.commit()
 
         for utxo in utxos:
-            self.utxo_cache[txinfo['txid'] + '_' + str(utxo.index)] = (tx.id, utxo.id, utxo.amount)
+            if TXOUT_TYPES.resolve(utxo.type) != TXOUT_TYPES.RAW:
+                self.utxo_cache[txinfo['txid'] + '_' + str(utxo.index)] = (tx.id, utxo.id, utxo.amount)
 
         print('Added   tx  %s (utxo cache: %d, hit %d/%d, address cache: %d)' % (hexlify(tx.txid), self.utxo_cache.currsize, len(utxo_cache_map), len(regular_inputs), self.address_cache.currsize))
         return tx

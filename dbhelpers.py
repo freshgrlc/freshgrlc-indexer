@@ -71,6 +71,7 @@ class DatabaseIO(object):
         for tx in blockinfo['tx']:
             self.confirm_transaction(tx, block.id)
 
+        self.session.commit()
         print('Added   blk %s (height %d)' % (hexlify(block.hash), block.height))
 
     def orphan_blocks(self, first_height):
@@ -128,6 +129,13 @@ class DatabaseIO(object):
 
             self.session.add(txin)
 
+        address_map = {}
+
+        for outp in txinfo['vout']:
+            address_map[outp['n']] = self.get_or_create_output_address(outp['scriptPubKey'], flushdb=False)
+
+        self.session.flush()
+
         for outp in txinfo['vout']:
             utxo = TransactionOutput()
             utxo.transaction_id = tx.id
@@ -135,7 +143,7 @@ class DatabaseIO(object):
             utxo.type = TXOUT_TYPES.internal_id(TXOUT_TYPES.from_rpcapi_type(outp['scriptPubKey']['type']))
             utxo.amount = outp['value']
 
-            utxo.address_id = self.get_or_create_output_address_id(outp['scriptPubKey'])
+            utxo.address_id = address_map[outp['n']].id
 
             total_out += utxo.amount
 
@@ -176,6 +184,9 @@ class DatabaseIO(object):
             input.input.spentby_id = input.id
 
     def get_or_create_output_address_id(self, txout_address_info):
+        return self.get_or_create_output_address(txout_address_info).id
+
+    def get_or_create_output_address(self, txout_address_info, flushdb=True):
         if 'addresses' in txout_address_info and len(txout_address_info['addresses']) == 1:
             address = txout_address_info['addresses'][0]
             raw = None
@@ -202,7 +213,9 @@ class DatabaseIO(object):
             db_address.raw = raw
 
             self.session.add(db_address)
-            self.session.flush()
 
-        return db_address.id
+            if flushdb:
+                self.session.flush()
+
+        return db_address
 

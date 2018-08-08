@@ -1,7 +1,7 @@
 from binascii import hexlify, unhexlify
 from datetime import datetime
 from decimal import Decimal
-from cachetools import LFUCache
+from cachetools import LFUCache, RRCache
 from sqlalchemy import tuple_
 
 from models import *
@@ -11,6 +11,7 @@ class DatabaseIO(object):
     def __init__(self, url, debug=False):
         self.session = sessionmaker(bind=create_engine(url, encoding='utf8', echo=debug))()
         self.address_cache = LFUCache(maxsize = 16384)
+        self.utxo_cache = RRCache(maxsize = 131072)
 
     def flush(self):
         self.session.flush()
@@ -119,8 +120,18 @@ class DatabaseIO(object):
         total_in = Decimal(0.0)
         total_out = Decimal(0.0)
 
+        utxo_cache_map = {}
+
         if len(regular_inputs) > 0:
-            filters = (and_(Transaction.txid == inp['txid'], TransactionOutput.index == inp['vout']) for inp in regular_inputs)
+            non_cached_inputs = []
+
+            for inp in regular_inputs:
+                key = inp['txid'] + '_' + str(inp['vout'])
+                if key in self.utxo_cache:
+                    utxo_cache_map[key] = self.utxo_cache[key]
+                    del self.utxo_cache[key]
+                else:
+                    non_cached_inputs.append(inp)
 
             results = self.session.query(
                 TransactionOutput,
@@ -128,12 +139,14 @@ class DatabaseIO(object):
             ).join(
                 Transaction
             ).filter(tuple_(Transaction.txid).in_(
-                [ (unhexlify(inp['txid']),) for inp in regular_inputs ]
+                [ (unhexlify(inp['txid']),) for inp in non_cached_inputs ]
             )).filter(tuple_(Transaction.txid, TransactionOutput.index).in_(
-                [ (unhexlify(inp['txid']), inp['vout']) for inp in regular_inputs ]
+                [ (unhexlify(inp['txid']), inp['vout']) for inp in non_cached_inputs ]
             )).all()
 
             txo_map = { (hexlify(tx.txid) + '_' + str(txo.index)): (tx.id, txo.id, txo.amount) for (txo, tx) in results }
+            for k, v in utxo_cache_map.items():
+                txo_map[k] = v
 
             txins = []
             for index, inp in enumerate(regular_inputs):
@@ -176,10 +189,13 @@ class DatabaseIO(object):
             tx.totalvalue = total_out
             tx.fee = 0
 
-        self.session.bulk_save_objects(utxos)
+        self.session.bulk_save_objects(utxos, return_defaults=True)
         self.session.commit()
 
-        print('Added   tx  %s' % hexlify(tx.txid))
+        for utxo in utxos:
+            self.utxo_cache[txinfo['txid'] + '_' + str(utxo.index)] = (tx.id, utxo.id, utxo.amount)
+
+        print('Added   tx  %s (utxo cache: %d, hit %d/%d, address cache: %d)' % (hexlify(tx.txid), self.utxo_cache.currsize, len(utxo_cache_map), len(regular_inputs), self.address_cache.currsize))
         return tx
 
     def confirm_transaction(self, txid, internal_block_id, tx_resolver=None):

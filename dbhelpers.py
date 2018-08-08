@@ -99,13 +99,13 @@ class DatabaseIO(object):
         regular_inputs = filter(lambda txin: not 'coinbase' in txin, txinfo['vin'])
 
         if len(regular_inputs) > 0:
-            print('Adding  tx  %s (%d inputs, %d outputs)' % (txinfo['hash'], len(regular_inputs), len(txinfo['vout'])))
+            print('Adding  tx  %s (%d inputs, %d outputs)' % (txinfo['txid'], len(regular_inputs), len(txinfo['vout'])))
         else:
-            print('Adding  tx  %s (coinbase, %d outputs)' % (txinfo['hash'], len(txinfo['vout'])))
+            print('Adding  tx  %s (coinbase, %d outputs)' % (txinfo['txid'], len(txinfo['vout'])))
 
         tx = Transaction()
 
-        tx.txid = unhexlify(txinfo['hash'])
+        tx.txid = unhexlify(txinfo['txid'])
         tx.size = txinfo['size']
         tx.fee = -1.0
         tx.totalvalue = -1.0

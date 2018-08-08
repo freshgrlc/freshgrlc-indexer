@@ -37,6 +37,8 @@ class DatabaseIO(object):
         if blockinfo['height'] == 0:
             blockinfo['tx'] = []
 
+        print('Adding  blk %s' % blockinfo['hash'])
+
         for txid in blockinfo['tx']:
             if self.transaction(txid) == None and tx_resolver != None:
                 txinfo, tx_runtime_metadata = tx_resolver(txid)
@@ -69,7 +71,7 @@ class DatabaseIO(object):
         for tx in blockinfo['tx']:
             self.confirm_transaction(tx, block.id)
 
-        print('Added blk %s (height %d)' % (hexlify(block.hash), block.height))
+        print('Added   blk %s (height %d)' % (hexlify(block.hash), block.height))
 
     def orphan_blocks(self, first_height):
         chaintip = self.chaintip()
@@ -89,6 +91,14 @@ class DatabaseIO(object):
             self.session.commit()
 
     def import_transaction(self, txinfo, tx_runtime_metadata=None):
+        #coinbase_inputs = filter(lambda txin: 'coinbase' in txin, txinfo['vin'])
+        regular_inputs = filter(lambda txin: not 'coinbase' in txin, txinfo['vin'])
+
+        if len(regular_inputs) > 0:
+            print('Adding  tx  %s (%d inputs, %d outputs)' % (txinfo['hash'], len(regular_inputs), len(txinfo['vout'])))
+        else:
+            print('Adding  tx  %s (coinbase, %d outputs)' % (txinfo['hash'], len(txinfo['vout'])))
+
         tx = Transaction()
 
         tx.txid = unhexlify(txinfo['hash'])
@@ -101,9 +111,6 @@ class DatabaseIO(object):
 
         self.session.add(tx)
         self.session.flush()
-
-        #coinbase_inputs = filter(lambda txin: 'coinbase' in txin, txinfo['vin'])
-        regular_inputs = filter(lambda txin: not 'coinbase' in txin, txinfo['vin'])
 
         total_in = Decimal(0.0)
         total_out = Decimal(0.0)
@@ -143,14 +150,12 @@ class DatabaseIO(object):
 
         self.session.commit()
 
-        if len(regular_inputs) > 0:
-            print('Added tx  %s (%d inputs, %d outputs)' % (hexlify(tx.txid), len(regular_inputs), len(txinfo['vout'])))
-        else:
-            print('Added tx  %s (coinbase, %d outputs)' % (hexlify(tx.txid), len(txinfo['vout'])))
-
+        print('Added   tx  %s' % hexlify(tx.txid))
         return tx
 
     def confirm_transaction(self, txid, internal_block_id, tx_resolver=None):
+        print('Confirm tx  %s' % txid)
+
         tx = self.transaction(txid)
 
         if tx == None and tx_resolver != None:

@@ -182,8 +182,9 @@ class DatabaseIO(object):
 
         tx.confirmation_id = blockref.id
 
-        for input in tx.inputs:
-            input.input.spentby_id = input.id
+        #for input in tx.inputs:
+        #    input.input.spentby_id = input.id
+        self.session.execute('UPDATE `txout` LEFT JOIN `txin` ON `txout`.`id` = `txin`.`input` SET `spentby` = `txin`.`id` WHERE `txin`.`transaction` = :tx_id;', { 'tx_id': tx.id })
 
     def get_or_create_output_address_id(self, txout_address_info):
         return self.get_or_create_output_address(txout_address_info).id

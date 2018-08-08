@@ -1,6 +1,7 @@
 from binascii import hexlify, unhexlify
 from datetime import datetime
 from decimal import Decimal
+from cachetools import LFUCache
 
 from models import *
 
@@ -8,6 +9,7 @@ from models import *
 class DatabaseIO(object):
     def __init__(self, url, debug=False):
         self.session = sessionmaker(bind=create_engine(url, encoding='utf8', echo=debug))()
+        self.address_cache = LFUCache(maxsize = 16384)
 
     def flush(self):
         self.session.flush()
@@ -187,6 +189,13 @@ class DatabaseIO(object):
         return self.get_or_create_output_address(txout_address_info).id
 
     def get_or_create_output_address(self, txout_address_info, flushdb=True):
+        class CachedAddress(object):
+            def __init__(self, source):
+                self.id = source.id
+                self.type = source.type
+                self.address = source.address
+                self.raw = source.raw
+
         if 'addresses' in txout_address_info and len(txout_address_info['addresses']) == 1:
             address = txout_address_info['addresses'][0]
             raw = None
@@ -195,7 +204,12 @@ class DatabaseIO(object):
             if len(address) > 34:
                 addr_type = ADDRESS_TYPES.BECH32
 
-            db_address = self.session.query(Address).filter(Address.address == address).first()
+            if address in self.address_cache:
+                db_address = self.address_cache[address]
+            else:
+                db_address = self.session.query(Address).filter(Address.address == address).first()
+                if db_address != None:
+                    self.address_cache[address] = CachedAddress(db_address)
         else:
             db_address = None
             address = None

@@ -135,6 +135,7 @@ class DatabaseIO(object):
 
             txo_map = { (hexlify(tx.txid) + '_' + str(txo.index)): (tx.id, txo.id, txo.amount) for (txo, tx) in results }
 
+            txins = []
             for index, inp in enumerate(regular_inputs):
                 in_entry = txo_map[inp['txid'] + '_' + str(inp['vout'])]
 
@@ -142,18 +143,19 @@ class DatabaseIO(object):
                 txin.input_id = in_entry[1]
                 txin.transaction_id = in_entry[0]
                 txin.index = index
+                txins.append(txin)
 
                 total_in += in_entry[2]
 
-                self.session.add(txin)
+            self.session.bulk_save_objects(txins)
 
         address_map = {}
-
         for outp in txinfo['vout']:
             address_map[outp['n']] = self.get_or_create_output_address(outp['scriptPubKey'], flushdb=False)
 
         self.session.flush()
 
+        utxos = []
         for outp in txinfo['vout']:
             utxo = TransactionOutput()
             utxo.transaction_id = tx.id
@@ -165,7 +167,7 @@ class DatabaseIO(object):
 
             total_out += utxo.amount
 
-            self.session.add(utxo)
+            utxos.append(utxo)
 
         if len(regular_inputs) != 0:
             tx.totalvalue = total_in
@@ -174,6 +176,7 @@ class DatabaseIO(object):
             tx.totalvalue = total_out
             tx.fee = 0
 
+        self.session.bulk_save_objects(utxos)
         self.session.commit()
 
         print('Added   tx  %s' % hexlify(tx.txid))

@@ -1,7 +1,11 @@
+import httplib
 import json
 import requests
+import socket
 
 from binascii import hexlify, unhexlify
+from bitcoinrpc import authproxy
+from time import sleep
 
 from coindaemon import Daemon
 from dbhelpers import DatabaseIO
@@ -60,11 +64,17 @@ class Context(Configuration):
 
 
 def run():
-    with Context() as c:
+    while True:
         try:
-            c.sync_blocks()
-        except KeyboardInterrupt:
+            with Context() as c:
+                try:
+                    c.sync_blocks()
+                except KeyboardInterrupt:
+                    return
+        except (socket.timeout, socket.error, httplib.BadStatusLine, authproxy.JSONRPCException):
             pass
+        print('Connection lost. Reconnecting in 10 seconds...')
+        sleep(10)
 
 if __name__ == '__main__':
     run()

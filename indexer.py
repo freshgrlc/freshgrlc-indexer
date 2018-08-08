@@ -11,7 +11,7 @@ from config import Configuration
 class Context(Configuration):
     def __init__(self):
         self.daemon = Daemon(self.DAEMON_URL)
-        self.db = DatabaseIO(self.DATABASE_URL)
+        self.db = DatabaseIO(self.DATABASE_URL, debug=self.DEBUG_SQL)
 
     def __enter__(self):
         return self

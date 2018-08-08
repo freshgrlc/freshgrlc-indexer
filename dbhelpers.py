@@ -2,6 +2,7 @@ from binascii import hexlify, unhexlify
 from datetime import datetime
 from decimal import Decimal
 from cachetools import LFUCache
+from sqlalchemy import tuple_
 
 from models import *
 
@@ -118,18 +119,33 @@ class DatabaseIO(object):
         total_in = Decimal(0.0)
         total_out = Decimal(0.0)
 
-        for index, inp in enumerate(regular_inputs):
-            in_tx = self.session.query(Transaction).filter(Transaction.txid == unhexlify(inp['txid'])).first()
-            in_txo = self.session.query(TransactionOutput).filter(TransactionOutput.transaction_id == in_tx.id).filter(TransactionOutput.index == inp['vout']).first()
+        if len(regular_inputs) > 0:
+            filters = (and_(Transaction.txid == inp['txid'], TransactionOutput.index == inp['vout']) for inp in regular_inputs)
 
-            txin = TransactionInput()
-            txin.input_id = in_txo.id
-            txin.transaction_id = tx.id
-            txin.index = index
+            results = self.session.query(
+                TransactionOutput,
+                Transaction
+            ).join(
+                Transaction
+            ).filter(tuple_(Transaction.txid).in_(
+                [ (unhexlify(inp['txid']),) for inp in regular_inputs ]
+            )).filter(tuple_(Transaction.txid, TransactionOutput.index).in_(
+                [ (unhexlify(inp['txid']), inp['vout']) for inp in regular_inputs ]
+            )).all()
 
-            total_in += in_txo.amount
+            txo_map = { (hexlify(tx.txid) + '_' + str(txo.index)): (tx.id, txo.id, txo.amount) for (txo, tx) in results }
 
-            self.session.add(txin)
+            for index, inp in enumerate(regular_inputs):
+                in_entry = txo_map[inp['txid'] + '_' + str(inp['vout'])]
+
+                txin = TransactionInput()
+                txin.input_id = in_entry[1]
+                txin.transaction_id = in_entry[0]
+                txin.index = index
+
+                total_in += in_entry[2]
+
+                self.session.add(txin)
 
         address_map = {}
 

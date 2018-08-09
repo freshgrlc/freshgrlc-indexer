@@ -2,6 +2,8 @@ from sqlalchemy import Column, ForeignKey, Integer, BigInteger, Float, String, C
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.ext.declarative import declarative_base
 
+SOLO_POOL_GROUP_ID = 1
+
 class ADDRESS_TYPES:
     BASE58 = 'base58'
     BECH32 = 'bech32'

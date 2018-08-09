@@ -51,10 +51,18 @@ class DatabaseIO(object):
 
         print('Adding  blk %s' % blockinfo['hash'])
 
+        coinbase_signatures = {}
+
         for txid in blockinfo['tx']:
             if self.transaction_internal_id(txid) == None and tx_resolver != None:
                 txinfo, tx_runtime_metadata = tx_resolver(txid)
-                self.import_transaction(txinfo, tx_runtime_metadata)
+                self.import_transaction(txinfo, tx_runtime_metadata, coinbase_signatures=coinbase_signatures)
+            elif tx_resolver != None:   # Temporary
+                txinfo, tx_runtime_metadata = tx_resolver(txid)
+                coinbase_inputs = filter(lambda txin: 'coinbase' in txin, txinfo['vin'])
+                if len(coinbase_inputs) > 0:
+                    coinbase_regular_outputs = filter(lambda txo: txo['value'] > 0.0 and 'addresses' in txo['scriptPubKey'] and len(txo['scriptPubKey']['addresses']) == 1, txinfo['vout'])
+                    coinbase_signatures[txinfo['txid']] = (coinbase_inputs[0]['coinbase'], [ (txo['n'], txo['scriptPubKey']['addresses'][0], txo['value']) for txo in coinbase_regular_outputs ])
 
         hash = unhexlify(blockinfo['hash'])
         block = self.block(hash)
@@ -62,7 +70,7 @@ class DatabaseIO(object):
         if block != None:
             block.height = int(blockinfo['height'])
             self.session.commit()
-            print('Updated block %d: %s' % (block.height, blockinfo['hash']))
+            print('Update  blk %s (height %d)' % (hexlify(block.hash), block.height))
             return
 
         block = Block()
@@ -81,6 +89,9 @@ class DatabaseIO(object):
 
         for tx in blockinfo['tx']:
             self.confirm_transaction(tx, block.id)
+
+        if len(coinbase_signatures) > 0:
+            self.add_coinbase_data(block, coinbase_signatures.keys()[0], coinbase_signatures.values()[0][0], coinbase_signatures.values()[0][1])
 
         print('Commit  blk %s' % hexlify(block.hash))
         self.session.commit()
@@ -103,9 +114,13 @@ class DatabaseIO(object):
             block.height = None
             self.session.commit()
 
-    def import_transaction(self, txinfo, tx_runtime_metadata=None):
-        #coinbase_inputs = filter(lambda txin: 'coinbase' in txin, txinfo['vin'])
+    def import_transaction(self, txinfo, tx_runtime_metadata=None, coinbase_signatures=None):
+        coinbase_inputs = filter(lambda txin: 'coinbase' in txin, txinfo['vin'])
         regular_inputs = filter(lambda txin: not 'coinbase' in txin, txinfo['vin'])
+
+        if coinbase_signatures != None and len(coinbase_inputs) > 0:
+            coinbase_regular_outputs = filter(lambda txo: txo['value'] > 0.0 and 'addresses' in txo['scriptPubKey'] and len(txo['scriptPubKey']['addresses']) == 1, txinfo['vout'])
+            coinbase_signatures[txinfo['txid']] = (coinbase_inputs[0]['coinbase'], [ (txo['n'], txo['scriptPubKey']['addresses'][0], txo['value']) for txo in coinbase_regular_outputs ])
 
         if len(regular_inputs) > 0:
             print('Adding  tx  %s (%d inputs, %d outputs)' % (txinfo['txid'], len(regular_inputs), len(txinfo['vout'])))
@@ -257,6 +272,61 @@ class DatabaseIO(object):
         #    input.input.spentby_id = input.id
         self.session.execute('UPDATE `transaction` SET `confirmation` = :blockref WHERE `id` = :tx_id;', { 'blockref': blockref.id, 'tx_id': tx_id })
         self.session.execute('UPDATE `txout` LEFT JOIN `txin` ON `txout`.`id` = `txin`.`input` SET `spentby` = `txin`.`id` WHERE `txin`.`transaction` = :tx_id;', { 'tx_id': tx_id })
+
+    def add_coinbase_data(self, block, txid, signature, outputs):
+        coinbaseinfo = CoinbaseInfo()
+        coinbaseinfo.block_id = block.id
+        coinbaseinfo.transaction_id = self.transaction_internal_id(txid)
+        coinbaseinfo.raw = unhexlify(signature)
+        coinbaseinfo.signature = None
+
+        totalout = sum([ o[2] for o in outputs ])
+        best_output = filter(lambda o: o[2] > (totalout * 95 / 100), outputs)
+        best_output = best_output[0] if len(best_output) > 0 else None
+        coinbaseinfo.mainoutput_id = self.session.query(TransactionOutput).filter(TransactionOutput.transaction_id == coinbaseinfo.transaction_id, TransactionOutput.index == best_output[0]).first().id if best_output != None else None
+
+        solo = len(coinbaseinfo.raw) <= 8
+
+        if not solo:
+            if b'/' in coinbaseinfo.raw:
+                try:
+                    coinbaseinfo.signature = coinbaseinfo.raw.split(b'/')[-2].decode('utf-8').join(2 * ['/'])
+                except IndexError:
+                    pass
+
+        self.session.add(coinbaseinfo)
+        self.session.flush()
+
+        self.find_and_set_miner(block, coinbaseinfo, solo)
+
+    def find_and_set_miner(self, block, coinbaseinfo, solo):
+        if not solo and coinbaseinfo.signature != None:
+            pool_cbsig = self.session.query(PoolCoinbaseSignature).filter(PoolCoinbaseSignature.signature == coinbaseinfo.signature).first()
+            if pool_cbsig != None:
+                block.miner = pool_cbsig.pool_id
+                return
+
+        if coinbaseinfo.mainoutput != None and coinbaseinfo.mainoutput.address_id != None:
+            pool_addr = self.session.query(PoolAddress).filter(PoolAddress.address_id == coinbaseinfo.mainoutput.address_id).first()
+            if pool_addr != None:
+                block.miner = pool_addr.pool_id
+                return
+
+            new_pool = Pool()
+            new_pool.group_id = SOLO_POOL_GROUP_ID
+            new_pool.solo = 1 if solo else 0
+            new_pool.name = coinbaseinfo.mainoutput.address.address + ' ' + ('(Solo miner)' if solo else '(Unkown Pool)')
+
+            self.session.add(new_pool)
+            self.session.flush()
+
+            pool_addr = PoolAddress()
+            pool_addr.address_id = coinbaseinfo.mainoutput.address_id
+            pool_addr.pool_id = new_pool.id
+
+            self.session.add(pool_addr)
+            block.miner = new_pool.id
+            return
 
     def get_or_create_output_address_id(self, txout_address_info):
         return self.get_or_create_output_address(txout_address_info).id

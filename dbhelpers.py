@@ -228,7 +228,7 @@ class DatabaseIO(object):
 
             print('Added   tx  %s (utxo cache: %d, hit %d/%d, txid cache: %d, address cache: %d)' % (hexlify(tx.txid), self.utxo_cache.currsize, len(utxo_cache_map), len(regular_inputs), self.txid_cache.currsize, self.address_cache.currsize))
         else:
-            print('Added   tx  %s (txid cache: %d, address cache: %d)' % (hexlify(tx.txid), self.txid_cache.currsize, self.address_cache.currsize))
+            print('Added   tx  %s (txid cache: %d, hit %d/%d, address cache: %d)' % (hexlify(tx.txid), self.txid_cache.currsize, len(utxo_cache_map), len(regular_inputs), self.address_cache.currsize))
 
         self.txid_cache[tx.txid] = tx.id
         return tx

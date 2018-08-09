@@ -91,6 +91,7 @@ class DatabaseIO(object):
             self.confirm_transaction(tx, block.id)
 
         if len(coinbase_signatures) > 0:
+            print('Adding  cb  %s' % coinbase_signatures.keys()[0])
             self.add_coinbase_data(block, coinbase_signatures.keys()[0], coinbase_signatures.values()[0][0], coinbase_signatures.values()[0][1])
 
         print('Commit  blk %s' % hexlify(block.hash))

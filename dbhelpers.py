@@ -2,7 +2,7 @@ from binascii import hexlify, unhexlify
 from datetime import datetime
 from decimal import Decimal
 from cachetools import LFUCache, RRCache
-from sqlalchemy import tuple_
+from sqlalchemy import tuple_, or_
 
 from models import *
 
@@ -11,6 +11,7 @@ class DatabaseIO(object):
     def __init__(self, url, utxo_cache=True, debug=False):
         self.session = sessionmaker(bind=create_engine(url, encoding='utf8', echo=debug))()
         self.address_cache = LFUCache(maxsize = 16384)
+        self.txid_cache = RRCache(maxsize = 16384)
         self.utxo_cache = RRCache(maxsize = 32768 * 8) if utxo_cache else None
 
     def flush(self):
@@ -36,6 +37,13 @@ class DatabaseIO(object):
             txid = unhexlify(txid)
         return self.session.query(Transaction).filter(Transaction.txid == txid).first()
 
+    def transaction_internal_id(self, txid):
+        _txid = unhexlify(txid)
+        if _txid in self.txid_cache:
+            return self.txid_cache[_txid]
+        tx = self.transaction(txid)
+        return tx.id if tx != None else None
+
     def import_blockinfo(self, blockinfo, runtime_metadata=None, tx_resolver=None):
         # Genesis block workaround
         if blockinfo['height'] == 0:
@@ -44,13 +52,12 @@ class DatabaseIO(object):
         print('Adding  blk %s' % blockinfo['hash'])
 
         for txid in blockinfo['tx']:
-            if self.transaction(txid) == None and tx_resolver != None:
+            if self.transaction_internal_id(txid) == None and tx_resolver != None:
                 txinfo, tx_runtime_metadata = tx_resolver(txid)
                 self.import_transaction(txinfo, tx_runtime_metadata)
 
         hash = unhexlify(blockinfo['hash'])
-
-        block = self.session.query(Block).filter(Block.hash == hash).first()
+        block = self.block(hash)
 
         if block != None:
             block.height = int(blockinfo['height'])
@@ -123,11 +130,15 @@ class DatabaseIO(object):
         utxo_cache_map = {}
 
         if len(regular_inputs) > 0:
+            for inp in regular_inputs:
+                inp['_txid'] = unhexlify(inp['txid'])
+                inp['_txo'] = inp['txid'] + '_' + str(inp['vout'])
+
             if self.utxo_cache != None:
                 non_cached_inputs = []
 
                 for inp in regular_inputs:
-                    key = inp['txid'] + '_' + str(inp['vout'])
+                    key = inp['_txo']
                     if key in self.utxo_cache:
                         utxo_cache_map[key] = self.utxo_cache[key]
                         del self.utxo_cache[key]
@@ -136,15 +147,27 @@ class DatabaseIO(object):
             else:
                 non_cached_inputs = regular_inputs
 
+            queryfilter = tuple([ tuple_(TransactionOutput.transaction_id, TransactionOutput.index) == (self.txid_cache[txo[0]], txo[1]) for txo in filter(lambda txo: txo[0] in self.txid_cache, [ (inp['_txid'], inp['vout']) for inp in non_cached_inputs ]) ])
+            ctx_txo_map = { (str(txo.transaction_id) + '_' + str(txo.index)): (txo.transaction_id, txo.id, txo.amount) for txo in self.session.query(TransactionOutput).filter(or_(*queryfilter)).all() } if queryfilter != () else {}
+
+            temp = non_cached_inputs
+            non_cached_inputs = []
+
+            for inp in temp:
+                if inp['_txid'] in self.txid_cache:
+                    utxo_cache_map[inp['_txo']] = ctx_txo_map[str(self.txid_cache[inp['_txid']]) + '_' + str(inp['vout'])]
+                else:
+                    non_cached_inputs.append(inp)
+
             results = self.session.query(
                 TransactionOutput,
                 Transaction
             ).join(
                 Transaction
             ).filter(tuple_(Transaction.txid).in_(
-                [ (unhexlify(inp['txid']),) for inp in non_cached_inputs ]
+                [ (inp['_txid'],) for inp in non_cached_inputs ]
             )).filter(tuple_(Transaction.txid, TransactionOutput.index).in_(
-                [ (unhexlify(inp['txid']), inp['vout']) for inp in non_cached_inputs ]
+                [ (inp['_txid'], inp['vout']) for inp in non_cached_inputs ]
             )).all()
 
             txo_map = { (hexlify(tx.txid) + '_' + str(txo.index)): (tx.id, txo.id, txo.amount) for (txo, tx) in results }
@@ -200,34 +223,36 @@ class DatabaseIO(object):
                 if TXOUT_TYPES.resolve(utxo.type) != TXOUT_TYPES.RAW:
                     self.utxo_cache[txinfo['txid'] + '_' + str(utxo.index)] = (tx.id, utxo.id, utxo.amount)
 
-            print('Added   tx  %s (utxo cache: %d, hit %d/%d, address cache: %d)' % (hexlify(tx.txid), self.utxo_cache.currsize, len(utxo_cache_map), len(regular_inputs), self.address_cache.currsize))
+            print('Added   tx  %s (utxo cache: %d, hit %d/%d, txid cache: %d, address cache: %d)' % (hexlify(tx.txid), self.utxo_cache.currsize, len(utxo_cache_map), len(regular_inputs), self.txid_cache.currsize, self.address_cache.currsize))
         else:
-            print('Added   tx  %s (address cache: %d)' % (hexlify(tx.txid), self.address_cache.currsize))
+            print('Added   tx  %s (txid cache: %d, address cache: %d)' % (hexlify(tx.txid), self.txid_cache.currsize, self.address_cache.currsize))
 
+        self.txid_cache[tx.txid] = tx.id
         return tx
 
     def confirm_transaction(self, txid, internal_block_id, tx_resolver=None):
         print('Confirm tx  %s' % txid)
 
-        tx = self.transaction(txid)
+        tx_id = self.transaction_internal_id(txid)
 
-        if tx == None and tx_resolver != None:
+        if tx_id == None and tx_resolver != None:
             txinfo, tx_runtime_metadata = tx_resolver(txid)
-            tx = self.import_transaction(txinfo, tx_runtime_metadata)
+            tx_id = self.import_transaction(txinfo, tx_runtime_metadata).id
 
-        blockref = self.session.query(BlockTransaction).filter(BlockTransaction.block_id == internal_block_id).filter(BlockTransaction.transaction_id == tx.id).first()
+        blockref = self.session.query(BlockTransaction).filter(BlockTransaction.block_id == internal_block_id).filter(BlockTransaction.transaction_id == tx_id).first()
         if blockref == None:
             blockref = BlockTransaction()
             blockref.block_id = internal_block_id
-            blockref.transaction_id = tx.id
+            blockref.transaction_id = tx_id
             self.session.add(blockref)
             self.session.flush()
 
-        tx.confirmation_id = blockref.id
-
+        #tx.confirmation_id = blockref.id
+        #
         #for input in tx.inputs:
         #    input.input.spentby_id = input.id
-        self.session.execute('UPDATE `txout` LEFT JOIN `txin` ON `txout`.`id` = `txin`.`input` SET `spentby` = `txin`.`id` WHERE `txin`.`transaction` = :tx_id;', { 'tx_id': tx.id })
+        self.session.execute('UPDATE `transaction` SET `confirmation` = :blockref WHERE `id` = :tx_id;', { 'blockref': blockref.id, 'tx_id': tx_id })
+        self.session.execute('UPDATE `txout` LEFT JOIN `txin` ON `txout`.`id` = `txin`.`input` SET `spentby` = `txin`.`id` WHERE `txin`.`transaction` = :tx_id;', { 'tx_id': tx_id })
 
     def get_or_create_output_address_id(self, txout_address_info):
         return self.get_or_create_output_address(txout_address_info).id

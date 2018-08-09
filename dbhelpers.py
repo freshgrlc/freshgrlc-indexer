@@ -8,10 +8,10 @@ from models import *
 
 
 class DatabaseIO(object):
-    def __init__(self, url, debug=False):
+    def __init__(self, url, utxo_cache=True, debug=False):
         self.session = sessionmaker(bind=create_engine(url, encoding='utf8', echo=debug))()
         self.address_cache = LFUCache(maxsize = 16384)
-        self.utxo_cache = RRCache(maxsize = 32768)
+        self.utxo_cache = RRCache(maxsize = 32768 * 8) if utxo_cache else None
 
     def flush(self):
         self.session.flush()
@@ -123,15 +123,18 @@ class DatabaseIO(object):
         utxo_cache_map = {}
 
         if len(regular_inputs) > 0:
-            non_cached_inputs = []
+            if self.utxo_cache != None:
+                non_cached_inputs = []
 
-            for inp in regular_inputs:
-                key = inp['txid'] + '_' + str(inp['vout'])
-                if key in self.utxo_cache:
-                    utxo_cache_map[key] = self.utxo_cache[key]
-                    del self.utxo_cache[key]
-                else:
-                    non_cached_inputs.append(inp)
+                for inp in regular_inputs:
+                    key = inp['txid'] + '_' + str(inp['vout'])
+                    if key in self.utxo_cache:
+                        utxo_cache_map[key] = self.utxo_cache[key]
+                        del self.utxo_cache[key]
+                    else:
+                        non_cached_inputs.append(inp)
+            else:
+                non_cached_inputs = regular_inputs
 
             results = self.session.query(
                 TransactionOutput,
@@ -189,14 +192,18 @@ class DatabaseIO(object):
             tx.totalvalue = total_out
             tx.fee = 0
 
-        self.session.bulk_save_objects(utxos, return_defaults=True)
+        self.session.bulk_save_objects(utxos, return_defaults=(self.utxo_cache != None))
         self.session.commit()
 
-        for utxo in utxos:
-            if TXOUT_TYPES.resolve(utxo.type) != TXOUT_TYPES.RAW:
-                self.utxo_cache[txinfo['txid'] + '_' + str(utxo.index)] = (tx.id, utxo.id, utxo.amount)
+        if self.utxo_cache != None:
+            for utxo in utxos:
+                if TXOUT_TYPES.resolve(utxo.type) != TXOUT_TYPES.RAW:
+                    self.utxo_cache[txinfo['txid'] + '_' + str(utxo.index)] = (tx.id, utxo.id, utxo.amount)
 
-        print('Added   tx  %s (utxo cache: %d, hit %d/%d, address cache: %d)' % (hexlify(tx.txid), self.utxo_cache.currsize, len(utxo_cache_map), len(regular_inputs), self.address_cache.currsize))
+            print('Added   tx  %s (utxo cache: %d, hit %d/%d, address cache: %d)' % (hexlify(tx.txid), self.utxo_cache.currsize, len(utxo_cache_map), len(regular_inputs), self.address_cache.currsize))
+        else:
+            print('Added   tx  %s (address cache: %d)' % (hexlify(tx.txid), self.address_cache.currsize))
+
         return tx
 
     def confirm_transaction(self, txid, internal_block_id, tx_resolver=None):

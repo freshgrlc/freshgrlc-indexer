@@ -114,7 +114,7 @@ CREATE TABLE `pool` (
   `name` varchar(64) NOT NULL,
   `solo` tinyint(4) NOT NULL DEFAULT '0',
   `website` varchar(64) DEFAULT NULL,
-  `graphcolor` char(6) NOT NULL,
+  `graphcolor` char(6) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `name_UNIQUE` (`name`),
   KEY `fk_pool_group_idx` (`group`),
@@ -252,4 +252,4 @@ CREATE TABLE `txout` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2018-08-08  0:19:50
+-- Dump completed on 2018-08-10  0:02:54

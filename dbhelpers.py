@@ -82,6 +82,7 @@ class DatabaseIO(object):
         for tx in blockinfo['tx']:
             self.confirm_transaction(tx, block.id)
 
+        print('Commit  blk %s' % hexlify(block.hash))
         self.session.commit()
         print('Added   blk %s (height %d)' % (hexlify(block.hash), block.height))
 
@@ -216,6 +217,8 @@ class DatabaseIO(object):
             tx.fee = 0
 
         self.session.bulk_save_objects(utxos, return_defaults=(self.utxo_cache != None))
+
+        print('Commit  tx  %s' % hexlify(tx.txid))
         self.session.commit()
 
         if self.utxo_cache != None:

@@ -160,18 +160,19 @@ class DatabaseIO(object):
                 else:
                     non_cached_inputs.append(inp)
 
-            results = self.session.query(
-                TransactionOutput,
-                Transaction
-            ).join(
-                Transaction
-            ).filter(tuple_(Transaction.txid).in_(
-                [ (inp['_txid'],) for inp in non_cached_inputs ]
-            )).filter(tuple_(Transaction.txid, TransactionOutput.index).in_(
-                [ (inp['_txid'], inp['vout']) for inp in non_cached_inputs ]
-            )).all()
+            if len(non_cached_inputs) > 0:
+                queryfilter = tuple([ tuple_(Transaction.txid, TransactionOutput.index) == (inp['_txid'], inp['vout']) for inp in non_cached_inputs ])
+                results = self.session.query(
+                    TransactionOutput,
+                    Transaction
+                ).join(
+                    Transaction
+                ).filter(or_(*queryfilter)).all()
 
-            txo_map = { (hexlify(tx.txid) + '_' + str(txo.index)): (tx.id, txo.id, txo.amount) for (txo, tx) in results }
+                txo_map = { (hexlify(tx.txid) + '_' + str(txo.index)): (tx.id, txo.id, txo.amount) for (txo, tx) in results }
+            else:
+                txo_map = {}
+
             for k, v in utxo_cache_map.items():
                 txo_map[k] = v
 

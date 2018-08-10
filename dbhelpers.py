@@ -289,10 +289,10 @@ class DatabaseIO(object):
         solo = len(coinbaseinfo.raw) <= 8
 
         if not solo:
-            if b'/' in coinbaseinfo.raw:
+            if coinbaseinfo.raw[-1] == b'/' and b'/' in coinbaseinfo.raw[:-1]:
                 try:
                     coinbaseinfo.signature = coinbaseinfo.raw.split(b'/')[-2].decode('utf-8').join(2 * ['/'])
-                except IndexError:
+                except (IndexError, UnicodeDecodeError):
                     pass
 
         self.session.add(coinbaseinfo)

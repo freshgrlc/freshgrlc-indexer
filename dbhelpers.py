@@ -11,8 +11,8 @@ class DatabaseIO(object):
     def __init__(self, url, utxo_cache=True, debug=False):
         self.session = sessionmaker(bind=create_engine(url, encoding='utf8', echo=debug))()
         self.address_cache = LFUCache(maxsize = 16384)
-        self.txid_cache = RRCache(maxsize = 16384)
-        self.utxo_cache = RRCache(maxsize = 32768 * 8) if utxo_cache else None
+        self.txid_cache = RRCache(maxsize = 131072)
+        self.utxo_cache = RRCache(maxsize = 262144) if utxo_cache else None
 
     def flush(self):
         self.session.flush()

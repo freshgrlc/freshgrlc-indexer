@@ -57,12 +57,6 @@ class DatabaseIO(object):
             if self.transaction_internal_id(txid) == None and tx_resolver != None:
                 txinfo, tx_runtime_metadata = tx_resolver(txid)
                 self.import_transaction(txinfo, tx_runtime_metadata, coinbase_signatures=coinbase_signatures)
-            elif tx_resolver != None:   # Temporary
-                txinfo, tx_runtime_metadata = tx_resolver(txid)
-                coinbase_inputs = filter(lambda txin: 'coinbase' in txin, txinfo['vin'])
-                if len(coinbase_inputs) > 0:
-                    coinbase_regular_outputs = filter(lambda txo: txo['value'] > 0.0 and 'addresses' in txo['scriptPubKey'] and len(txo['scriptPubKey']['addresses']) == 1, txinfo['vout'])
-                    coinbase_signatures[txinfo['txid']] = (coinbase_inputs[0]['coinbase'], [ (txo['n'], txo['scriptPubKey']['addresses'][0], txo['value']) for txo in coinbase_regular_outputs ])
 
         hash = unhexlify(blockinfo['hash'])
         block = self.block(hash)

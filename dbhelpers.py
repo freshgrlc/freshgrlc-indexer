@@ -49,10 +49,9 @@ class DatabaseIO(object):
         if blockinfo['height'] == 0:
             blockinfo['tx'] = []
 
-        print('Adding  blk %s' % blockinfo['hash'])
+        print('Adding  blk %s%s' % (blockinfo['hash'], '' if runtime_metadata == None else (' (via %s)' % runtime_metadata['relayip'])))
 
         coinbase_signatures = {}
-
         for txid in blockinfo['tx']:
             if self.transaction_internal_id(txid) == None and tx_resolver != None:
                 txinfo, tx_runtime_metadata = tx_resolver(txid)
@@ -72,7 +71,7 @@ class DatabaseIO(object):
         block.hash = hash
         block.height = int(blockinfo['height'])
         block.size = blockinfo['size']
-        block.timestamp = datetime.fromtimestamp(blockinfo['time'])
+        block.timestamp = datetime.utcfromtimestamp(blockinfo['time'])
         block.difficulty = blockinfo['difficulty']
         block.firstseen = runtime_metadata['relaytime'] if runtime_metadata != None else None
         block.relayedby = runtime_metadata['relayip'] if runtime_metadata != None else None

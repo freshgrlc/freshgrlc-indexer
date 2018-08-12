@@ -53,6 +53,7 @@ class Context(Configuration):
         self.db = DatabaseIO(self.DATABASE_URL, utxo_cache=self.UTXO_CACHE, debug=self.DEBUG_SQL)
         self.hashcache = TTLCache(ttl=20, maxsize=256)
         self.logwatcher = None
+        self.mempoolcache = TTLCache(ttl=600, maxsize=4096)
 
     def __enter__(self):
         return self
@@ -100,7 +101,14 @@ class Context(Configuration):
         self.db.import_blockinfo(self.daemon.getblock(hash), runtime_metadata=runtime_info, tx_resolver=self.get_transaction_with_metadata)
 
     def query_mempool(self):
-        pass
+        new_txs = filter(lambda tx: not tx in self.mempoolcache, self.daemon.getrawmempool())
+        if len(new_txs) > 0:
+            self.update_hash_cash()
+            for txid in new_txs:
+                if self.db.transaction_internal_id(txid) == None:
+                    txinfo = self.get_transaction_with_metadata(txid)
+                    self.db.import_transaction(txinfo=txinfo[0], tx_runtime_metadata=txinfo[1])
+                self.mempoolcache[txid] = True
 
     def init_log_watcher(self):
         self.logwatcher = LogWatcher(self.NODE_LOGFILE)
@@ -112,7 +120,7 @@ class Context(Configuration):
                     self.hashcache[hash] = info
 
     def get_transaction_with_metadata(self, txid):
-        return self.daemon.load_transaction(txid), None
+        return self.daemon.load_transaction(txid), None if not txid in self.hashcache else self.hashcache[txid]
 
 
 def run():

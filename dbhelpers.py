@@ -87,6 +87,12 @@ class DatabaseIO(object):
             print('Adding  cb  %s' % coinbase_signatures.keys()[0])
             self.add_coinbase_data(block, coinbase_signatures.keys()[0], coinbase_signatures.values()[0][0], coinbase_signatures.values()[0][1])
 
+            if runtime_metadata != None:
+                tx = self.transaction(coinbase_signatures.keys()[0])
+                tx.firstseen = block.firstseen
+                tx.relayedby = block.relayedby
+                self.session.add(tx)
+
         print('Commit  blk %s' % hexlify(block.hash))
         self.session.commit()
         print('Added   blk %s (height %d)' % (hexlify(block.hash), block.height))
@@ -117,7 +123,7 @@ class DatabaseIO(object):
             coinbase_signatures[txinfo['txid']] = (coinbase_inputs[0]['coinbase'], [ (txo['n'], txo['scriptPubKey']['addresses'][0], txo['value']) for txo in coinbase_regular_outputs ])
 
         if len(regular_inputs) > 0:
-            print('Adding  tx  %s (%d inputs, %d outputs)' % (txinfo['txid'], len(regular_inputs), len(txinfo['vout'])))
+            print('Adding  tx  %s (%d inputs, %d outputs, via %s)' % (txinfo['txid'], len(regular_inputs), len(txinfo['vout']), tx_runtime_metadata['relayip'] if tx_runtime_metadata != None else 'unknown'))
         else:
             print('Adding  tx  %s (coinbase, %d outputs)' % (txinfo['txid'], len(txinfo['vout'])))
 

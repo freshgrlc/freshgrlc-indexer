@@ -13,13 +13,16 @@ class DatabaseIO(object):
         self.address_cache = LFUCache(maxsize = 16384)
         self.txid_cache = RRCache(maxsize = 131072)
         self.utxo_cache = RRCache(maxsize = 262144) if utxo_cache else None
+        self._chaintip = None
 
     def flush(self):
         self.session.flush()
         self.session.close()
 
     def chaintip(self):
-        return self.session.query(Block).filter(Block.height != None).order_by(Block.height.desc()).first()
+        if self._chaintip == None:
+            self._chaintip = self.session.query(Block).filter(Block.height != None).order_by(Block.height.desc()).first()
+        return self._chaintip
 
     def block(self, blockid):
         if type(blockid) in [ int, long ]:
@@ -63,6 +66,7 @@ class DatabaseIO(object):
         if block != None:
             block.height = int(blockinfo['height'])
             self.session.commit()
+            self._chaintip = None
             print('Update  blk %s (height %d)' % (hexlify(block.hash), block.height))
             return
 
@@ -95,6 +99,7 @@ class DatabaseIO(object):
 
         print('Commit  blk %s' % hexlify(block.hash))
         self.session.commit()
+        self._chaintip = None
         print('Added   blk %s (height %d)' % (hexlify(block.hash), block.height))
 
     def orphan_blocks(self, first_height):
@@ -118,9 +123,18 @@ class DatabaseIO(object):
         coinbase_inputs = filter(lambda txin: 'coinbase' in txin, txinfo['vin'])
         regular_inputs = filter(lambda txin: not 'coinbase' in txin, txinfo['vin'])
 
-        if coinbase_signatures != None and len(coinbase_inputs) > 0:
-            coinbase_regular_outputs = filter(lambda txo: txo['value'] > 0.0 and 'addresses' in txo['scriptPubKey'] and len(txo['scriptPubKey']['addresses']) == 1, txinfo['vout'])
-            coinbase_signatures[txinfo['txid']] = (coinbase_inputs[0]['coinbase'], [ (txo['n'], txo['scriptPubKey']['addresses'][0], txo['value']) for txo in coinbase_regular_outputs ])
+        is_coinbase_tx = len(coinbase_inputs) > 0
+
+        if coinbase_signatures != None and is_coinbase_tx:
+            coinbase_regular_outputs = filter(
+                lambda txo: txo['value'] > 0.0 and 'addresses' in txo['scriptPubKey'] and len(txo['scriptPubKey']['addresses']) == 1,
+                txinfo['vout']
+            )
+            coinbase_signatures[txinfo['txid']] = (coinbase_inputs[0]['coinbase'], [
+                    (txo['n'], txo['scriptPubKey']['addresses'][0], txo['value'])
+                for txo in
+                    coinbase_regular_outputs
+            ])
 
         if len(regular_inputs) > 0:
             print('Adding  tx  %s (%d inputs, %d outputs, via %s)' % (txinfo['txid'], len(regular_inputs), len(txinfo['vout']), tx_runtime_metadata['relayip'] if tx_runtime_metadata != None else 'unknown'))
@@ -140,97 +154,36 @@ class DatabaseIO(object):
         self.session.add(tx)
         self.session.flush()
 
+        self.txid_cache[tx.txid] = tx.id
+
         total_in = Decimal(0.0)
         total_out = Decimal(0.0)
 
-        utxo_cache_map = {}
+        utxo_cache_hits = 0
+        txid_cache_hits = 0
 
         if len(regular_inputs) > 0:
             for inp in regular_inputs:
                 inp['_txid'] = unhexlify(inp['txid'])
                 inp['_txo'] = inp['txid'] + '_' + str(inp['vout'])
 
-            if self.utxo_cache != None:
-                non_cached_inputs = []
+            utxo_cache_map, non_cached_inputs = self.lookup_input_utxos_from_utxo_cache(regular_inputs)
+            txid_cache_map, non_cached_inputs = self.lookup_input_utxos_using_txid_cache(non_cached_inputs)
+            txo_map = self.lookup_input_utxos_slow(non_cached_inputs)
 
-                for inp in regular_inputs:
-                    key = inp['_txo']
-                    if key in self.utxo_cache:
-                        utxo_cache_map[key] = self.utxo_cache[key]
-                        del self.utxo_cache[key]
-                    else:
-                        non_cached_inputs.append(inp)
-            else:
-                non_cached_inputs = regular_inputs
+            utxo_cache_hits = len(utxo_cache_map)
+            txid_cache_hits = len(txid_cache_map)
 
-            queryfilter = tuple([ tuple_(TransactionOutput.transaction_id, TransactionOutput.index) == (self.txid_cache[txo[0]], txo[1]) for txo in filter(lambda txo: txo[0] in self.txid_cache, [ (inp['_txid'], inp['vout']) for inp in non_cached_inputs ]) ])
-            ctx_txo_map = { (str(txo.transaction_id) + '_' + str(txo.index)): (txo.transaction_id, txo.id, txo.amount) for txo in self.session.query(TransactionOutput).filter(or_(*queryfilter)).all() } if queryfilter != () else {}
+            txo_map.update(utxo_cache_map)
+            txo_map.update(txid_cache_map)
 
-            temp = non_cached_inputs
-            non_cached_inputs = []
+            total_in = self.import_tx_inputs(regular_inputs, tx.id, txo_map)
 
-            for inp in temp:
-                if inp['_txid'] in self.txid_cache:
-                    utxo_cache_map[inp['_txo']] = ctx_txo_map[str(self.txid_cache[inp['_txid']]) + '_' + str(inp['vout'])]
-                else:
-                    non_cached_inputs.append(inp)
-
-            if len(non_cached_inputs) > 0:
-                queryfilter = tuple([ tuple_(Transaction.txid, TransactionOutput.index) == (inp['_txid'], inp['vout']) for inp in non_cached_inputs ])
-                results = self.session.query(
-                    TransactionOutput,
-                    Transaction
-                ).join(
-                    Transaction
-                ).filter(or_(*queryfilter)).all()
-
-                txo_map = { (hexlify(tx.txid) + '_' + str(txo.index)): (tx.id, txo.id, txo.amount) for (txo, tx) in results }
-            else:
-                txo_map = {}
-
-            for k, v in utxo_cache_map.items():
-                txo_map[k] = v
-
-            txins = []
-            for index, inp in enumerate(regular_inputs):
-                in_entry = txo_map[inp['txid'] + '_' + str(inp['vout'])]
-
-                txin = TransactionInput()
-                txin.input_id = in_entry[1]
-                txin.transaction_id = in_entry[0]
-                txin.index = index
-                txins.append(txin)
-
-                total_in += in_entry[2]
-
-            self.session.bulk_save_objects(txins)
-
-        address_map = {}
-        for outp in txinfo['vout']:
-            address_map[outp['n']] = self.get_or_create_output_address(outp['scriptPubKey'], flushdb=False)
-
+        address_map = dict({ outp['n']: self.get_or_create_output_address(outp['scriptPubKey'], flushdb=False) for outp in txinfo['vout'] })
         self.session.flush()
 
-        utxos = []
-        for outp in txinfo['vout']:
-            utxo = TransactionOutput()
-            utxo.transaction_id = tx.id
-            utxo.index = outp['n']
-            utxo.type = TXOUT_TYPES.internal_id(TXOUT_TYPES.from_rpcapi_type(outp['scriptPubKey']['type']))
-            utxo.amount = outp['value']
-
-            utxo.address_id = address_map[outp['n']].id
-
-            total_out += utxo.amount
-
-            utxos.append(utxo)
-
-        if len(regular_inputs) != 0:
-            tx.totalvalue = total_in
-            tx.fee = total_in - total_out
-        else:   # Coinbase
-            tx.totalvalue = total_out
-            tx.fee = 0
+        utxos, total_out = self.import_tx_outputs(txinfo['vout'], tx.id, address_map)
+        tx.totalvalue, tx.fee = self.calculate_tx_totals(total_in, total_out, coinbase=is_coinbase_tx)
 
         self.session.bulk_save_objects(utxos, return_defaults=(self.utxo_cache != None))
 
@@ -238,16 +191,125 @@ class DatabaseIO(object):
         self.session.commit()
 
         if self.utxo_cache != None:
-            for utxo in utxos:
-                if TXOUT_TYPES.resolve(utxo.type) != TXOUT_TYPES.RAW:
-                    self.utxo_cache[txinfo['txid'] + '_' + str(utxo.index)] = (tx.id, utxo.id, utxo.amount)
-
-            print('Added   tx  %s (utxo cache: %d, hit %d/%d, txid cache: %d, address cache: %d)' % (hexlify(tx.txid), self.utxo_cache.currsize, len(utxo_cache_map), len(regular_inputs), self.txid_cache.currsize, self.address_cache.currsize))
+            self.update_utxo_cache(txinfo['txid'], tx.id, utxos)
+            print('Added   tx  %s (utxo cache: %d, hit %d/%d, txid cache: %d, address cache: %d)' % (txinfo['txid'], self.utxo_cache.currsize, utxo_cache_hits, len(regular_inputs), self.txid_cache.currsize, self.address_cache.currsize))
         else:
-            print('Added   tx  %s (txid cache: %d, hit %d/%d, address cache: %d)' % (hexlify(tx.txid), self.txid_cache.currsize, len(utxo_cache_map), len(regular_inputs), self.address_cache.currsize))
+            print('Added   tx  %s (txid cache: %d, hit %d/%d, address cache: %d)' % (txinfo['txid'], self.txid_cache.currsize, txid_cache_hits, len(regular_inputs), self.address_cache.currsize))
 
-        self.txid_cache[tx.txid] = tx.id
         return tx
+
+    def import_tx_inputs(self, inputs, internal_tx_id, utxo_info):
+        inserts = []
+        total_value = Decimal(0.0)
+
+        for index, inp in enumerate(inputs):
+            utxo_id, utxo_value = utxo_info[inp['_txo']]
+
+            txin = TransactionInput()
+            txin.input_id = utxo_id
+            txin.transaction_id = internal_tx_id
+            txin.index = index
+            inserts.append(txin)
+
+            total_value += utxo_value
+
+        self.session.bulk_save_objects(inserts)
+        return total_value
+
+    def import_tx_outputs(self, outputs, internal_tx_id, address_id_mappings):
+        inserts = []
+        total_value = Decimal(0.0)
+
+        for outp in outputs:
+            utxo = TransactionOutput()
+            utxo.transaction_id = internal_tx_id
+            utxo.index = outp['n']
+            utxo.type = TXOUT_TYPES.internal_id(TXOUT_TYPES.from_rpcapi_type(outp['scriptPubKey']['type']))
+            utxo.amount = outp['value']
+
+            utxo.address_id = address_id_mappings[outp['n']].id
+            inserts.append(utxo)
+
+            total_value += utxo.amount
+
+        return inserts, total_value
+
+    def calculate_tx_totals(self, total_in, total_out, coinbase=False):
+        if coinbase:
+            return total_out, Decimal(0.0)
+        return total_in, total_in - total_out
+
+    def update_utxo_cache(self, txid, internal_tx_id, utxos):
+        if self.utxo_cache == None:
+            return
+        for utxo in utxos:
+            if TXOUT_TYPES.resolve(utxo.type) != TXOUT_TYPES.RAW:
+                self.utxo_cache[txid + '_' + str(utxo.index)] = (internal_tx_id, utxo.id, utxo.amount)
+
+    def lookup_input_utxos_from_utxo_cache(self, inputs):
+        if self.utxo_cache == None:
+            return {}, inputs
+
+        cache_misses = []
+        resolved_utxos = {}
+
+        for inp in inputs:
+            key = inp['_txo']
+            if key in self.utxo_cache:
+                tx_internal_id, utxo_internal_id, utxo_value = self.utxo_cache[key]
+                resolved_utxos[key] = (utxo_internal_id, utxo_value)
+                del self.utxo_cache[key]
+            else:
+                cache_misses.append(inp)
+        return resolved_utxos, cache_misses
+
+    def lookup_input_utxos_using_txid_cache(self, inputs):
+        queryfilter = tuple([
+                tuple_(TransactionOutput.transaction_id, TransactionOutput.index) == (self.txid_cache[txo[0]], txo[1])
+            for txo in
+                filter(lambda txo: txo[0] in self.txid_cache, [
+                        (inp['_txid'], inp['vout'])
+                    for inp in
+                        inputs
+                ])
+        ])
+        ctx_txo_map = {
+                (str(txo.transaction_id) + '_' + str(txo.index)): (txo.id, txo.amount)
+            for txo in
+                self.session.query(TransactionOutput).filter(or_(*queryfilter)).all()
+        } if queryfilter != () else {}
+
+        cache_misses = []
+        resolved_utxos = {}
+
+        for inp in inputs:
+            if inp['_txid'] in self.txid_cache:
+                resolved_utxos[inp['_txo']] = ctx_txo_map[str(self.txid_cache[inp['_txid']]) + '_' + str(inp['vout'])]
+            else:
+                cache_misses.append(inp)
+        return resolved_utxos, cache_misses
+
+    def lookup_input_utxos_slow(self, inputs):
+        if len(inputs) == 0:
+            return {}
+
+        queryfilter = tuple([
+                tuple_(Transaction.txid, TransactionOutput.index) == (inp['_txid'], inp['vout'])
+            for inp in
+                inputs
+        ])
+        results = self.session.query(
+            TransactionOutput,
+            Transaction
+        ).join(
+            Transaction
+        ).filter(or_(*queryfilter)).all()
+
+        return {
+                (hexlify(tx.txid) + '_' + str(txo.index)): (txo.id, txo.amount)
+            for (txo, tx) in
+                results
+        }
 
     def confirm_transaction(self, txid, internal_block_id, tx_resolver=None):
         print('Confirm tx  %s' % txid)

@@ -377,7 +377,7 @@ class DatabaseIO(object):
             new_pool = Pool()
             new_pool.group_id = SOLO_POOL_GROUP_ID if solo else None
             new_pool.solo = 1 if solo else 0
-            new_pool.name = coinbaseinfo.mainoutput.address.address + ' ' + ('(Solo miner)' if solo else '(Unkown Pool)')
+            new_pool.name = coinbaseinfo.mainoutput.address.address + ' ' + ('(Solo miner)' if solo else '(Unknown Pool)')
 
             self.session.add(new_pool)
             self.session.flush()

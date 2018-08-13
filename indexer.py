@@ -45,7 +45,7 @@ class LogWatcher(object):
                 if len(parts) > 6 and parts[2] == 'New' and parts[3] in ('tx', 'block') and parts[5] == 'from':
                     if not parts[4] in ret.keys():
                         relaytime = datetime.strptime(' '.join(parts[0:2]), '%Y-%m-%d %H:%M:%S')
-                        relayip = parts[6].split(':')[0].lstrip('[').rstrip(']')
+                        relayip = parts[6].rsplit(':', 1)[0].lstrip('[').rstrip(']')
                         ret[parts[4]] = { 'relaytime': relaytime, 'relayip': relayip }
         return ret
 

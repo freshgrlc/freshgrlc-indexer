@@ -10,7 +10,7 @@ from datetime import datetime
 from time import sleep
 
 from coindaemon import Daemon
-from dbhelpers import DatabaseIO
+from database import DatabaseIO
 from config import Configuration
 
 

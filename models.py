@@ -114,10 +114,19 @@ class Block(Base):
     difficulty = Column(Float(asdecimal=True))
     firstseen = Column(DateTime)
     relayedby = Column(String(48))
-    miner = Column(Integer, index=True)
+    miner_id = Column('miner', Integer, ForeignKey('pool.id'), index=True)
 
+    miner = relationship('Pool')
     coinbaseinfo = relationship('CoinbaseInfo', back_populates='block')
     transactionreferences = relationship('BlockTransaction', back_populates='block')
+
+    API_DATA_FIELDS = [ hash, height, size, timestamp, difficulty, firstseen, relayedby ]
+    POSTPROCESS_RESOLVE_FOREIGN_KEYS = [ miner, 'Block.transactions' ]
+
+    def __getattribute__(self, name):
+        if name == 'transactions':
+            return [ ref.transaction for ref in self.transactionreferences ]
+        return super(Block, self).__getattribute__(name)
 
 
 class BlockTransaction(Base):
@@ -159,6 +168,9 @@ class Pool(Base):
     addresses = relationship('PoolAddress', back_populates='pool')
     coinbasesignatures = relationship('PoolCoinbaseSignature', back_populates='pool')
 
+    API_DATA_FIELDS = [ name, website, graphcolor ]
+    POSTPROCESS_RESOLVE_FOREIGN_KEYS = [ group ]
+
 
 class PoolAddress(Base):
     __tablename__ = 'pooladdress'
@@ -175,12 +187,13 @@ class PoolGroup(Base):
 
     id = Column(Integer, primary_key=True)
     name = Column(String(64), unique=True)
-    solo = Column(Integer)
     website = Column(String(64))
     graphcolor = Column(CHAR(6))
 
     pools = relationship('Pool', back_populates='group')
 
+    API_DATA_FIELDS = [ name, graphcolor ]
+    POSTPROCESS_RESOLVE_FOREIGN_KEYS = []
 
 class PoolCoinbaseSignature(Base):
     __tablename__ = 'poolsignature'
@@ -209,6 +222,15 @@ class Transaction(Base):
     coinbaseinfo = relationship('CoinbaseInfo', back_populates='transaction')
     inputs = relationship('TransactionInput', back_populates='transaction')
     outputs = relationship('TransactionOutput', back_populates='transaction')
+
+    API_DATA_FIELDS = [ txid, size, fee, totalvalue, firstseen, 'Transaction.confirmed', 'Transaction.coinbase' ]
+
+    def __getattribute__(self, name):
+        if name == 'confirmed':
+            return self.confirmation_id != None
+        if name == 'coinbase':
+            return len(self.coinbaseinfo) > 0
+        return super(Transaction, self).__getattribute__(name)
 
 
 class TransactionInput(Base):

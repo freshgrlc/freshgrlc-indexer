@@ -4,7 +4,7 @@ class Configuration(object):
     DATABASE_URL = 'mysql://indexer:indexer@localhost/garlicoin'
     NODE_LOGFILE = '/var/log/garlicoin.log'
 
-    UTXO_CACHE = True
+    UTXO_CACHE = False
 
     DEBUG_SQL = False
 

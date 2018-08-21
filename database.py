@@ -7,13 +7,20 @@ from sqlalchemy import tuple_, or_
 from models import *
 
 
-class DatabaseIO(object):
-    def __init__(self, url, utxo_cache=True, debug=False):
-        self.session = sessionmaker(bind=create_engine(url, encoding='utf8', echo=debug))()
-        self.address_cache = LFUCache(maxsize = 16384)
-        self.txid_cache = RRCache(maxsize = 131072)
-        self.utxo_cache = RRCache(maxsize = 262144) if utxo_cache else None
+class DatabaseSession(object):
+    def __init__(self, session, address_cache, txid_cache, utxo_cache=None):
+        self.session = session
         self._chaintip = None
+
+        self.address_cache = address_cache
+        self.txid_cache = txid_cache
+        self.utxo_cache = utxo_cache
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, type, value, traceback):
+        self.flush()
 
     def flush(self):
         self.session.flush()
@@ -35,6 +42,9 @@ class DatabaseIO(object):
 
         return self.session.query(Block).filter(Block.hash == (unhexlify(blockid) if len(blockid) == 64 else blockid)).first()
 
+    def blocks(self, start_height, limit):
+        return self.session.query(Block).filter(Block.height >= start_height).order_by(Block.height).limit(limit).all()
+
     def transaction(self, txid):
         if len(txid) == 64:
             txid = unhexlify(txid)
@@ -46,6 +56,14 @@ class DatabaseIO(object):
             return self.txid_cache[_txid]
         tx = self.transaction(txid)
         return tx.id if tx != None else None
+
+    def latest_transactions(self, confirmed_only=False, limit=100):
+        if confirmed_only:
+            return self.session.query(Transaction).filter(Transaction.confirmation_id != None).order_by(Transaction.id.desc()).limit(limit).all()
+        return self.session.query(Transaction).order_by(Transaction.id.desc()).limit(limit).all()
+
+    def mempool(self):
+        return self.session.query(Transaction).filter(Transaction.confirmation_id == None).filter(Transaction.coinbaseinfo == None).order_by(Transaction.id.desc()).all()
 
     def import_blockinfo(self, blockinfo, runtime_metadata=None, tx_resolver=None):
         # Genesis block workaround
@@ -79,7 +97,7 @@ class DatabaseIO(object):
         block.difficulty = blockinfo['difficulty']
         block.firstseen = runtime_metadata['relaytime'] if runtime_metadata != None else None
         block.relayedby = runtime_metadata['relayip'] if runtime_metadata != None else None
-        block.miner = None
+        block.miner_id = None
 
         self.session.add(block)
         self.session.flush()
@@ -365,13 +383,13 @@ class DatabaseIO(object):
         if not solo and coinbaseinfo.signature != None:
             pool_cbsig = self.session.query(PoolCoinbaseSignature).filter(PoolCoinbaseSignature.signature == coinbaseinfo.signature).first()
             if pool_cbsig != None:
-                block.miner = pool_cbsig.pool_id
+                block.miner_id = pool_cbsig.pool_id
                 return
 
         if coinbaseinfo.mainoutput != None and coinbaseinfo.mainoutput.address_id != None:
             pool_addr = self.session.query(PoolAddress).filter(PoolAddress.address_id == coinbaseinfo.mainoutput.address_id).first()
             if pool_addr != None:
-                block.miner = pool_addr.pool_id
+                block.miner_id = pool_addr.pool_id
                 return
 
             new_pool = Pool()
@@ -387,7 +405,7 @@ class DatabaseIO(object):
             pool_addr.pool_id = new_pool.id
 
             self.session.add(pool_addr)
-            block.miner = new_pool.id
+            block.miner_id = new_pool.id
             return
 
     def get_or_create_output_address_id(self, txout_address_info):
@@ -438,3 +456,15 @@ class DatabaseIO(object):
 
         return db_address
 
+class DatabaseIO(DatabaseSession):
+    def __init__(self, url, utxo_cache=False, debug=False):
+        self.sessionmaker = sessionmaker(bind=create_engine(url, encoding='utf8', echo=debug))
+
+        self.address_cache = LFUCache(maxsize = 16384)
+        self.txid_cache = RRCache(maxsize = 131072)
+        self.utxo_cache = RRCache(maxsize = 262144) if utxo_cache else None
+
+        super(DatabaseIO, self).__init__(self.sessionmaker(), address_cache=self.address_cache, txid_cache=self.txid_cache, utxo_cache=self.utxo_cache)
+
+    def new_session(self):
+        return DatabaseSession(self.sessionmaker(), address_cache=self.address_cache, txid_cache=self.txid_cache, utxo_cache=self.utxo_cache)

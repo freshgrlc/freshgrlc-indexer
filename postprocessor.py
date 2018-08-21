@@ -1,10 +1,14 @@
 import json
 
 from binascii import hexlify
+from datetime import datetime
 from flask import request, Response
 
 from models import *
 
+
+def convert_date(date):
+    return int((date - datetime(1970, 1, 1)).total_seconds())
 
 def json_preprocess_value(k, v, cls):
     if v == None or type(v) == dict:
@@ -18,7 +22,7 @@ def json_preprocess_value(k, v, cls):
     if datatype == Binary:
         return hexlify(v)
     if datatype == DateTime:
-        return v.isoformat()
+        return convert_date(v)
     if datatype == Float:
         return float(v)
     return v

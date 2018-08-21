@@ -1,3 +1,7 @@
+from gevent import monkey
+
+monkey.patch_all()
+
 from flask import Flask, request, Response
 from sqlalchemy import Column
 

@@ -3,7 +3,7 @@ from gevent import monkey
 monkey.patch_all()
 
 from datetime import datetime
-from flask import Flask, request, Response
+from flask import Flask, request, Response, Headers
 from sqlalchemy import Column
 
 from config import Configuration
@@ -19,7 +19,10 @@ stream = IndexerEventStream(db)
 
 @webapp.route('/events/subscribe')
 def subscribe():
-    return Response(stream.subscriber(channels=(request.args.get('channels').split(',') if request.args.get('channels') != None else [])), mimetype='text/event-stream')
+    headers = Headers()
+    headers.add('X-Accel-Buffering', 'no')
+    headers.add('Cache-Control', 'no-cache')
+    return Response(stream.subscriber(channels=(request.args.get('channels').split(',') if request.args.get('channels') != None else [])), mimetype='text/event-stream', headers=headers)
 
 @webapp.route('/blocks/')
 def blocks():

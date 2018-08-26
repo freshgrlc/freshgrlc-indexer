@@ -8,6 +8,7 @@ class IndexerEventStream(EventStream):
         super(IndexerEventStream, self).__init__()
         self.db = db
         spawn(self.listener)
+        spawn(self.keepalive)
 
     def broadcast_new_blocks(self, blocks):
         with QueryDataPostProcessor() as pp:
@@ -36,4 +37,9 @@ class IndexerEventStream(EventStream):
                 if cur_tx_internal_id > last_tx_internal_id:
                     self.broadcast_new_txs(filter(lambda tx: tx.id > last_tx_internal_id, session.latest_transactions(limit=(cur_tx_internal_id - last_tx_internal_id))))
                     last_tx_internal_id = cur_tx_internal_id
+
+    def keepalive(self):
+        while True:
+            sleep(20)
+            self.publish(Event('keepalive', None, channel='keepalive'))
 

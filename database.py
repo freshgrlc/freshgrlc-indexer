@@ -2,7 +2,7 @@ from binascii import hexlify, unhexlify
 from datetime import datetime
 from decimal import Decimal
 from cachetools import LFUCache, RRCache
-from sqlalchemy import tuple_, or_
+from sqlalchemy import tuple_, or_, func as sqlfunc
 
 from models import *
 
@@ -61,6 +61,26 @@ class DatabaseSession(object):
         if confirmed_only:
             return self.session.query(Transaction).filter(Transaction.confirmation_id != None).order_by(Transaction.id.desc()).limit(limit).all()
         return self.session.query(Transaction).order_by(Transaction.id.desc()).limit(limit).all()
+
+    def pool_stats(self, since):
+        results = self.session.query(
+            Pool.name,
+            sqlfunc.count(Block.id).label('blocks'),
+            sqlfunc.max(Block.height).label('lastblock'),
+            Pool.website,
+            Pool.graphcolor
+        ).join(Block).filter(Block.timestamp >= since).group_by(Pool.name).all();
+        return [ dict(zip(('name', 'amountmined', 'latestblock', 'website', 'graphcolor'), stats)) for stats in results ]
+
+    def network_stats(self, since):
+        block_stats = self.session.query(
+            sqlfunc.count(Block.id)
+        ).filter(Block.timestamp >= since).filter(Block.height != None).all()[0]
+        transaction_stats = self.session.query(
+            sqlfunc.count(Block.id),
+            sqlfunc.sum(Transaction.totalvalue)
+        ).join(BlockTransaction).join(Transaction, Transaction.id==BlockTransaction.transaction_id).filter(Block.timestamp >= since).filter(Block.height != None).filter(Transaction.coinbaseinfo == None).all()[0]
+        return dict(zip(('blocks', 'transactions', 'transactedvalue'), ( block_stats[0], transaction_stats[0], transaction_stats[1] )))
 
     def mempool(self):
         return self.session.query(Transaction).filter(Transaction.confirmation_id == None).filter(Transaction.coinbaseinfo == None).order_by(Transaction.id.desc()).all()

@@ -2,6 +2,7 @@ import json
 
 from binascii import hexlify
 from datetime import datetime
+from decimal import Decimal
 from flask import request, Response
 
 from models import *
@@ -16,14 +17,14 @@ def json_preprocess_value(k, v, cls):
 
     try:
         datatype = type(getattr(cls, k).type)
-    except AttributeError:
+    except (AttributeError, TypeError):
         datatype = type(v)
 
     if datatype == Binary:
         return hexlify(v)
     if datatype == DateTime:
         return convert_date(v)
-    if datatype == Float:
+    if datatype == Float or datatype == Decimal:
         return float(v)
     return v
 
@@ -157,3 +158,11 @@ class QueryDataPostProcessor(object):
         if type(data) == list:
             return self.ProcessedData([ self._process(obj) for obj in data ])
         return self.ProcessedData(self._process(data))
+
+    def _process_raw(self, data):
+        return { k: json_preprocess_value(k, v, None) for k, v in data.items() }
+
+    def process_raw(self, data):
+        if type(data) == list:
+            return self.ProcessedData([ self._process_raw(obj) for obj in data ])
+        return self.ProcessedData(self._process_raw(data))

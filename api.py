@@ -3,8 +3,9 @@ from gevent import monkey
 monkey.patch_all()
 
 from datetime import datetime
-from flask import Flask, request, Response, Headers
+from flask import Flask, request, Response
 from sqlalchemy import Column
+from werkzeug.datastructures import Headers
 
 from config import Configuration
 from database import DatabaseIO

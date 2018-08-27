@@ -6,5 +6,7 @@ class Configuration(object):
 
     UTXO_CACHE = False
 
+    API_ENDPOINT = ''
+
     DEBUG_SQL = False
 

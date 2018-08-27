@@ -5,6 +5,7 @@ from datetime import datetime
 from decimal import Decimal
 from flask import request, Response
 
+from config import Configuration
 from models import *
 
 
@@ -81,7 +82,7 @@ def json_preprocess_dbobject(object, resolve_foreignkeys=None, whitelist=None, r
     return converted
 
 
-class QueryDataPostProcessor(object):
+class QueryDataPostProcessor(Configuration):
     DEFAULT_OBJECTS_PER_PAGE = 20
     MAX_OBJECTS_PER_PAGE = 100
 
@@ -143,7 +144,7 @@ class QueryDataPostProcessor(object):
 
     def reflinks(self, *keys):
         for key in keys:
-            self.reflink(key, self.baseurl + key + '/')
+            self.reflink(key, self.API_ENDPOINT + self.baseurl + key + '/')
         return self
 
     def autoexpand(self):

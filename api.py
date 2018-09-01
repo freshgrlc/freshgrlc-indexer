@@ -4,6 +4,7 @@ monkey.patch_all()
 
 from datetime import datetime
 from flask import Flask, request, Response
+from flask_cors import cross_origin
 from sqlalchemy import Column
 from werkzeug.datastructures import Headers
 
@@ -19,6 +20,7 @@ db = DatabaseIO(Configuration.DATABASE_URL, debug=Configuration.DEBUG_SQL)
 stream = IndexerEventStream(db)
 
 @webapp.route('/events/subscribe')
+@cross_origin()
 def subscribe():
     headers = Headers()
     headers.add('X-Accel-Buffering', 'no')
@@ -26,6 +28,7 @@ def subscribe():
     return Response(stream.subscriber(channels=(request.args.get('channels').split(',') if request.args.get('channels') != None else [])), mimetype='text/event-stream', headers=headers)
 
 @webapp.route('/blocks/')
+@cross_origin()
 def blocks():
     with db.new_session() as session:
         with QueryDataPostProcessor() as pp:
@@ -34,6 +37,7 @@ def blocks():
             return pp.process(session.blocks(pp.start, pp.limit)).json()
 
 @webapp.route('/blocks/<blockid>/')
+@cross_origin()
 def block(blockid):
     with db.new_session() as session:
         with QueryDataPostProcessor() as pp:
@@ -41,6 +45,7 @@ def block(blockid):
             return pp.process(session.block(blockid)).json()
 
 @webapp.route('/blocks/<blockid>/miner/')
+@cross_origin()
 def blockminer(blockid):
     with db.new_session() as session:
         with QueryDataPostProcessor() as pp:
@@ -48,6 +53,7 @@ def blockminer(blockid):
             return pp.process(session.block(blockid))['miner'].json()
 
 @webapp.route('/blocks/<blockid>/transactions/')
+@cross_origin()
 def blocktransactions(blockid):
     with db.new_session() as session:
         with QueryDataPostProcessor() as pp:
@@ -55,6 +61,7 @@ def blocktransactions(blockid):
             return pp.process(session.block(blockid))['transactions'].json()
 
 @webapp.route('/transactions/')
+@cross_origin()
 def transactions():
     with db.new_session() as session:
         with QueryDataPostProcessor() as pp:
@@ -74,6 +81,7 @@ def transactions():
             return pp.process(data).json()
 
 @webapp.route('/networkstats/')
+@cross_origin()
 def stats():
     since = datetime.fromtimestamp(int(request.args.get('since')))
     with db.new_session() as session:
@@ -90,6 +98,7 @@ def stats():
             }).json()
 
 @webapp.route('/poolstats/')
+@cross_origin()
 def poolstats():
     since = datetime.fromtimestamp(int(request.args.get('since')))
     with db.new_session() as session:

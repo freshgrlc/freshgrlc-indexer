@@ -1,17 +1,20 @@
-import httplib
-import json
-import requests
 import socket
 
-from binascii import hexlify, unhexlify
+from binascii import unhexlify
 from bitcoinrpc import authproxy
 from cachetools import TTLCache
 from datetime import datetime
 from time import sleep
+from sys import version_info
 
 from coindaemon import Daemon
 from database import DatabaseIO
 from config import Configuration
+
+if version_info[0] > 2:
+    import http.client as httplib
+else:
+    import httplib
 
 
 class LogWatcher(object):
@@ -46,8 +49,9 @@ class LogWatcher(object):
                     if not parts[4] in ret.keys():
                         relaytime = datetime.strptime(' '.join(parts[0:2]), '%Y-%m-%d %H:%M:%S')
                         relayip = parts[6].rsplit(':', 1)[0].lstrip('[').rstrip(']')
-                        ret[parts[4]] = { 'relaytime': relaytime, 'relayip': relayip }
+                        ret[parts[4]] = {'relaytime': relaytime, 'relayip': relayip}
         return ret
+
 
 class Context(Configuration):
     def __init__(self):
@@ -60,14 +64,14 @@ class Context(Configuration):
     def __enter__(self):
         return self
 
-    def __exit__(self, type, value, traceback):
+    def __exit__(self, exc_type, exc_value, traceback):
         self.db.flush()
 
     def find_common_ancestor(self):
         chaintip_height = self.daemon.get_current_height()
         indexer_tip = self.db.chaintip()
 
-        if indexer_tip == None:
+        if indexer_tip is None:
             return -1, -1, chaintip_height
 
         ancestor_height = indexer_tip.height
@@ -97,17 +101,17 @@ class Context(Configuration):
                 self.import_blockheight(height)
 
     def import_blockheight(self, height):
-        self.update_hash_cash()
-        hash = self.daemon.getblockhash(height)
-        runtime_info = self.hashcache[hash] if hash in self.hashcache else None
-        self.db.import_blockinfo(self.daemon.getblock(hash), runtime_metadata=runtime_info, tx_resolver=self.get_transaction_with_metadata)
+        self.update_hash_cache()
+        blockhash = self.daemon.getblockhash(height)
+        runtime_info = self.hashcache[blockhash] if blockhash in self.hashcache else None
+        self.db.import_blockinfo(self.daemon.getblock(blockhash), runtime_metadata=runtime_info, tx_resolver=self.get_transaction_with_metadata)
 
     def query_mempool(self):
-        new_txs = filter(lambda tx: not tx in self.mempoolcache, self.daemon.getrawmempool())
+        new_txs = filter(lambda tx: tx not in self.mempoolcache, self.daemon.getrawmempool())
         if len(new_txs) > 0:
-            self.update_hash_cash()
+            self.update_hash_cache()
             for txid in new_txs:
-                if self.db.transaction_internal_id(txid) == None:
+                if self.db.transaction_internal_id(txid) is None:
                     txinfo = self.get_transaction_with_metadata(txid)
                     self.db.import_transaction(txinfo=txinfo[0], tx_runtime_metadata=txinfo[1])
                 self.mempoolcache[txid] = True
@@ -115,14 +119,14 @@ class Context(Configuration):
     def init_log_watcher(self):
         self.logwatcher = LogWatcher(self.NODE_LOGFILE)
 
-    def update_hash_cash(self):
-        if self.logwatcher != None:
-            for hash, info in self.logwatcher.poll().items():
-                if not hash in self.hashcache:
-                    self.hashcache[hash] = info
+    def update_hash_cache(self):
+        if self.logwatcher is not None:
+            for objhash, info in self.logwatcher.poll().items():
+                if objhash not in self.hashcache:
+                    self.hashcache[objhash] = info
 
     def get_transaction_with_metadata(self, txid):
-        return self.daemon.load_transaction(txid), None if not txid in self.hashcache else self.hashcache[txid]
+        return self.daemon.load_transaction(txid), None if txid not in self.hashcache else self.hashcache[txid]
 
 
 def run():
@@ -146,6 +150,6 @@ def run():
         print('Connection lost. Reconnecting in 10 seconds...')
         sleep(10)
 
+
 if __name__ == '__main__':
     run()
-

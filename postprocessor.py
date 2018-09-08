@@ -12,8 +12,9 @@ from models import *
 def convert_date(date):
     return int((date - datetime(1970, 1, 1)).total_seconds())
 
+
 def json_preprocess_value(k, v, cls):
-    if v == None or type(v) == dict:
+    if v is None or type(v) == dict:
         return v
 
     try:
@@ -29,51 +30,62 @@ def json_preprocess_value(k, v, cls):
         return float(v)
     return v
 
+
 def substitute_contextinfo(template, context):
     parts = template.split('<')
     result = parts.pop(0)
 
     while len(parts) > 0:
         key, template_part = tuple(parts.pop(0).split('>'))
-        object, key = tuple(key.split('.'))
-        result += context[object][key] + template_part
+        obj, key = tuple(key.split('.'))
+        result += context[obj][key] + template_part
 
     return result
 
-def json_preprocess_dbobject(object, resolve_foreignkeys=None, whitelist=None, reflinks={}, context={}):
-    if object == None:
+
+def json_preprocess_dbobject(obj, resolve_foreignkeys=None, whitelist=None, reflinks={}, context={}):
+    if obj is None:
         return
 
     try:
-        my_foreignkeys = filter(lambda fk: str(fk).split('.')[0] == object.__class__.__name__, (resolve_foreignkeys or object.__class__.POSTPROCESS_RESOLVE_FOREIGN_KEYS))
-    except AttributeError as e:
+        my_foreignkeys = filter(lambda fk: str(fk).split('.')[0] == obj.__class__.__name__, (resolve_foreignkeys or obj.__class__.POSTPROCESS_RESOLVE_FOREIGN_KEYS))
+    except AttributeError:
         my_foreignkeys = []
 
     try:
-        my_whitelist = [ n[1] for n in filter(lambda n: n[0].split('.')[0] in [ object.__class__.__name__, object.__class__.__tablename__ ], [ (str(col), col.name if type(col) != str else col.split('.')[-1]) for col in (whitelist or object.__class__.API_DATA_FIELDS) ]) ]
-    except AttributeError as e:
-        my_whitelist = object.__dict__.keys()
+        my_whitelist = [
+            n[1]
+            for n in filter(lambda n: n[0].split('.')[0] in [obj.__class__.__name__, obj.__class__.__tablename__], [
+                (str(col), col.name if type(col) != str else col.split('.')[-1])
+                for col in (whitelist or obj.__class__.API_DATA_FIELDS)
+            ])
+        ]
+    except AttributeError:
+        my_whitelist = obj.__dict__.keys()
 
-    converted = { colname: json_preprocess_value(colname, object.__getattribute__(colname), object.__class__) for colname in my_whitelist }
+    converted = {colname: json_preprocess_value(colname, obj.__getattribute__(colname), obj.__class__) for colname in my_whitelist}
 
     my_context = context.copy()
-    my_context[object.__class__.__name__] = converted
-    my_context[object.__class__.__tablename__] = converted
+    my_context[obj.__class__.__name__] = converted
+    my_context[obj.__class__.__tablename__] = converted
 
     for foreignkey in my_foreignkeys:
         colname = str(foreignkey).split('.')[-1]
         try:
-            refid = getattr(object, colname + '_id')
+            refid = getattr(obj, colname + '_id')
         except AttributeError:
             refid = -1
 
-        if refid != None:
+        if refid is not None:
             if colname in reflinks.keys():
-                converted[colname] = { 'href': substitute_contextinfo(reflinks[colname], my_context) }
+                converted[colname] = {'href': substitute_contextinfo(reflinks[colname], my_context)}
             else:
-                refs = getattr(object, colname)
+                refs = getattr(obj, colname)
                 if isinstance(refs, list):
-                    converted[colname] = [ json_preprocess_dbobject(ref, resolve_foreignkeys=resolve_foreignkeys, whitelist=whitelist, reflinks=reflinks, context=my_context) for ref in refs ]
+                    converted[colname] = [
+                        json_preprocess_dbobject(ref, resolve_foreignkeys=resolve_foreignkeys, whitelist=whitelist, reflinks=reflinks, context=my_context)
+                        for ref in refs
+                    ]
                 else:
                     converted[colname] = json_preprocess_dbobject(refs, resolve_foreignkeys=resolve_foreignkeys, whitelist=whitelist, reflinks=reflinks, context=my_context)
         else:
@@ -99,12 +111,16 @@ class QueryDataPostProcessor(Configuration):
     def __init__(self):
         self.filter_keys = None
         self.resolve_foreignkeys = None
+        self.start = None
+        self.limit = None
+        self.end = None
+        self.baseurl = None
         self._reflinks = {}
 
     def __enter__(self):
         return self
 
-    def __exit__(self, type, value, traceback):
+    def __exit__(self, exc_type, exc_value, traceback):
         pass
 
     def pagination(self, backwards_indexes=False, tipresolver=None):
@@ -149,7 +165,7 @@ class QueryDataPostProcessor(Configuration):
 
     def autoexpand(self):
         expansion_requested = filter(lambda key: key != 'none', (request.args.get('expand') or 'none').split(','))
-        self._reflinks = dict(filter(lambda pair: not pair[0] in expansion_requested, self._reflinks.items())) if not '*' in expansion_requested else {}
+        self._reflinks = dict(filter(lambda pair: not pair[0] in expansion_requested, self._reflinks.items())) if '*' not in expansion_requested else {}
         return self
 
     def _process(self, data):
@@ -157,13 +173,13 @@ class QueryDataPostProcessor(Configuration):
 
     def process(self, data):
         if type(data) == list:
-            return self.ProcessedData([ self._process(obj) for obj in data ])
+            return self.ProcessedData([self._process(obj) for obj in data])
         return self.ProcessedData(self._process(data))
 
     def _process_raw(self, data):
-        return { k: json_preprocess_value(k, v, None) for k, v in data.items() }
+        return {k: json_preprocess_value(k, v, None) for k, v in data.items()}
 
     def process_raw(self, data):
         if type(data) == list:
-            return self.ProcessedData([ self._process_raw(obj) for obj in data ])
+            return self.ProcessedData([self._process_raw(obj) for obj in data])
         return self.ProcessedData(self._process_raw(data))

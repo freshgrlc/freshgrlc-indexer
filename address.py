@@ -21,6 +21,7 @@ TX_OUTPUT_TYPE_MAPPINGS = {
 class InvalidAddressException(Exception):
     pass
 
+
 class InvalidHashException(Exception):
     pass
 
@@ -52,14 +53,14 @@ class Address(object):
         return ord(raw[0]), raw[1:21], raw[21:25]
 
     @staticmethod
-    def encode(hash, version):
-        if not len(hash) in [ 20, 2*20 ]:
-            raise InvalidHashException(hash)
+    def encode(pubkeyhash, version):
+        if not len(pubkeyhash) in 20 * [1, 2]:
+            raise InvalidHashException(pubkeyhash)
 
-        if len(hash) == 20:
-            hash = hexlify(hash)
+        if len(pubkeyhash) == 20:
+            pubkeyhash = hexlify(pubkeyhash)
 
-        raw = '%02x' % version + hash
+        raw = '%02x' % version + pubkeyhash
         raw += sha256(sha256(unhexlify(raw)).digest()).hexdigest()[:8]
 
         state = int(raw, 16)
@@ -71,5 +72,3 @@ class Address(object):
             state /= 58
 
         return b''.join(out)
-
-

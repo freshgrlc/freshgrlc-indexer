@@ -4,10 +4,12 @@ from gevent import spawn, sleep
 from postprocessor import QueryDataPostProcessor
 from sse import EventStream, Event
 
+
 class Mempool(object):
     def __init__(self, db):
         self.db = db
         self.dirty = False
+        self.pool = None
         spawn(self.getinitdata)
 
     def getinitdata(self):
@@ -88,4 +90,3 @@ class IndexerEventStream(EventStream):
         while True:
             sleep(20)
             self.publish(Event('keepalive', None, channel='keepalive'))
-

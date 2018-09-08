@@ -1,11 +1,8 @@
-from gevent import monkey
-
-monkey.patch_all()
+from gevent import monkey; monkey.patch_all()
 
 from datetime import datetime
 from flask import Flask, request, Response
 from flask_cors import cross_origin
-from sqlalchemy import Column
 from werkzeug.datastructures import Headers
 
 from config import Configuration
@@ -14,10 +11,12 @@ from models import Block
 from postprocessor import QueryDataPostProcessor
 from eventgen import IndexerEventStream
 
+
 webapp = Flask('indexer-api')
 db = DatabaseIO(Configuration.DATABASE_URL, debug=Configuration.DEBUG_SQL)
 
 stream = IndexerEventStream(db)
+
 
 @webapp.route('/events/subscribe')
 @cross_origin()
@@ -25,7 +24,12 @@ def subscribe():
     headers = Headers()
     headers.add('X-Accel-Buffering', 'no')
     headers.add('Cache-Control', 'no-cache')
-    return Response(stream.subscriber(channels=(request.args.get('channels').split(',') if request.args.get('channels') != None else [])), mimetype='text/event-stream', headers=headers)
+    return Response(stream.subscriber(
+        channels=(request.args.get('channels').split(',') if request.args.get('channels') is not None else [])),
+        mimetype='text/event-stream',
+        headers=headers
+    )
+
 
 @webapp.route('/blocks/')
 @cross_origin()
@@ -36,6 +40,7 @@ def blocks():
             pp.baseurl('/blocks/<Block.hash>/').reflinks('miner', 'transactions').autoexpand()
             return pp.process(session.blocks(pp.start, pp.limit)).json()
 
+
 @webapp.route('/blocks/<blockid>/')
 @cross_origin()
 def block(blockid):
@@ -43,6 +48,7 @@ def block(blockid):
         with QueryDataPostProcessor() as pp:
             pp.baseurl('/blocks/<Block.hash>/').reflinks('miner', 'transactions').autoexpand()
             return pp.process(session.block(blockid)).json()
+
 
 @webapp.route('/blocks/<blockid>/miner/')
 @cross_origin()
@@ -52,6 +58,7 @@ def blockminer(blockid):
             pp.resolve_keys(Block.miner)
             return pp.process(session.block(blockid))['miner'].json()
 
+
 @webapp.route('/blocks/<blockid>/transactions/')
 @cross_origin()
 def blocktransactions(blockid):
@@ -59,6 +66,7 @@ def blocktransactions(blockid):
         with QueryDataPostProcessor() as pp:
             pp.resolve_keys('Block.transactions')
             return pp.process(session.block(blockid))['transactions'].json()
+
 
 @webapp.route('/transactions/')
 @cross_origin()
@@ -69,7 +77,7 @@ def transactions():
             pp.baseurl('/transactions/<Transaction.txid>/')
 
             query_confirmed = request.args.get('confirmed')
-            if query_confirmed == None or query_confirmed == '':
+            if query_confirmed is None or query_confirmed == '':
                 data = session.latest_transactions(limit=pp.limit)
             elif query_confirmed == 'true':
                 data = session.latest_transactions(limit=pp.limit, confirmed_only=True)
@@ -79,6 +87,7 @@ def transactions():
                 data = []
 
             return pp.process(data).json()
+
 
 @webapp.route('/networkstats/')
 @cross_origin()
@@ -96,6 +105,7 @@ def stats():
                     'totalvalue':   data['transactedvalue']
                 }
             }).json()
+
 
 @webapp.route('/poolstats/')
 @cross_origin()

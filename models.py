@@ -1,8 +1,9 @@
-from sqlalchemy import Column, ForeignKey, Integer, BigInteger, Float, String, CHAR, Binary, VARBINARY, DateTime, create_engine
-from sqlalchemy.orm import sessionmaker, relationship
+from sqlalchemy import Column, ForeignKey, Integer, BigInteger, Float, String, CHAR, Binary, VARBINARY, DateTime
+from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
 
 SOLO_POOL_GROUP_ID = 1
+
 
 class ADDRESS_TYPES:
     BASE58 = 'base58'
@@ -20,12 +21,12 @@ class ADDRESS_TYPES:
         ]
 
     @classmethod
-    def internal_id(cls, type):
-        if type == cls.RAW:
+    def internal_id(cls, txtype):
+        if txtype == cls.RAW:
             return -1
 
         try:
-            return cls.all().index(type)
+            return cls.all().index(txtype)
         except ValueError:
             return -1
 
@@ -70,12 +71,12 @@ class TXOUT_TYPES:
         ]
 
     @classmethod
-    def internal_id(cls, type):
-        if type == cls.RAW:
+    def internal_id(cls, txtype):
+        if txtype == cls.RAW:
             return -1
 
         try:
-            return cls.all().index(type)
+            return cls.all().index(txtype)
         except ValueError:
             return -1
 
@@ -92,7 +93,9 @@ class TXOUT_TYPES:
             return cls.RPCAPI_MAPPINGS[rpcapi_type]
         return cls.RAW
 
+
 Base = declarative_base()
+
 
 class Address(Base):
     __tablename__ = 'address'
@@ -120,12 +123,12 @@ class Block(Base):
     coinbaseinfo = relationship('CoinbaseInfo', back_populates='block')
     transactionreferences = relationship('BlockTransaction', back_populates='block')
 
-    API_DATA_FIELDS = [ hash, height, size, timestamp, difficulty, firstseen, relayedby ]
-    POSTPROCESS_RESOLVE_FOREIGN_KEYS = [ miner, 'Block.transactions' ]
+    API_DATA_FIELDS = [hash, height, size, timestamp, difficulty, firstseen, relayedby]
+    POSTPROCESS_RESOLVE_FOREIGN_KEYS = [miner, 'Block.transactions']
 
     def __getattribute__(self, name):
         if name == 'transactions':
-            return [ ref.transaction for ref in self.transactionreferences ]
+            return [ref.transaction for ref in self.transactionreferences]
         return super(Block, self).__getattribute__(name)
 
 
@@ -136,7 +139,7 @@ class BlockTransaction(Base):
     transaction_id = Column('transaction', BigInteger, ForeignKey('transaction.id'), index=True)
     block_id = Column('block', Integer, ForeignKey('block.id'), index=True)
 
-    transaction = relationship('Transaction', back_populates='blockreferences', foreign_keys=[ transaction_id ])
+    transaction = relationship('Transaction', back_populates='blockreferences', foreign_keys=[transaction_id])
     block = relationship('Block', back_populates='transactionreferences')
 
 
@@ -168,8 +171,8 @@ class Pool(Base):
     addresses = relationship('PoolAddress', back_populates='pool')
     coinbasesignatures = relationship('PoolCoinbaseSignature', back_populates='pool')
 
-    API_DATA_FIELDS = [ name, website, graphcolor ]
-    POSTPROCESS_RESOLVE_FOREIGN_KEYS = [ group ]
+    API_DATA_FIELDS = [name, website, graphcolor]
+    POSTPROCESS_RESOLVE_FOREIGN_KEYS = [group]
 
 
 class PoolAddress(Base):
@@ -192,8 +195,9 @@ class PoolGroup(Base):
 
     pools = relationship('Pool', back_populates='group')
 
-    API_DATA_FIELDS = [ name, graphcolor ]
+    API_DATA_FIELDS = [name, graphcolor]
     POSTPROCESS_RESOLVE_FOREIGN_KEYS = []
+
 
 class PoolCoinbaseSignature(Base):
     __tablename__ = 'poolsignature'
@@ -217,17 +221,17 @@ class Transaction(Base):
     relayedby = Column(String(48))
     confirmation_id = Column('confirmation', BigInteger, ForeignKey('blocktx.id'), unique=True)
 
-    confirmation = relationship('BlockTransaction', foreign_keys=[ confirmation_id ])
-    blockreferences = relationship('BlockTransaction', back_populates='transaction', foreign_keys=[ BlockTransaction.transaction_id ])
+    confirmation = relationship('BlockTransaction', foreign_keys=[confirmation_id])
+    blockreferences = relationship('BlockTransaction', back_populates='transaction', foreign_keys=[BlockTransaction.transaction_id])
     coinbaseinfo = relationship('CoinbaseInfo', back_populates='transaction')
     inputs = relationship('TransactionInput', back_populates='transaction')
     outputs = relationship('TransactionOutput', back_populates='transaction')
 
-    API_DATA_FIELDS = [ txid, size, fee, totalvalue, firstseen, 'Transaction.confirmed', 'Transaction.coinbase' ]
+    API_DATA_FIELDS = [txid, size, fee, totalvalue, firstseen, 'Transaction.confirmed', 'Transaction.coinbase']
 
     def __getattribute__(self, name):
         if name == 'confirmed':
-            return self.confirmation_id != None
+            return self.confirmation_id is None
         if name == 'coinbase':
             return len(self.coinbaseinfo) > 0
         return super(Transaction, self).__getattribute__(name)
@@ -242,7 +246,7 @@ class TransactionInput(Base):
     input_id = Column('input', BigInteger, ForeignKey('txout.id'), index=True)
 
     transaction = relationship('Transaction', back_populates='inputs')
-    input = relationship('TransactionOutput', back_populates='spenders', foreign_keys=[ input_id ])
+    input = relationship('TransactionOutput', back_populates='spenders', foreign_keys=[input_id])
 
 
 class TransactionOutput(Base):
@@ -258,6 +262,6 @@ class TransactionOutput(Base):
 
     transaction = relationship('Transaction', back_populates='outputs')
     address = relationship('Address')
-    spenders = relationship('TransactionInput', back_populates='input', foreign_keys=[ TransactionInput.input_id ])
-    spentby = relationship('TransactionInput', foreign_keys=[ spentby_id ])
+    spenders = relationship('TransactionInput', back_populates='input', foreign_keys=[TransactionInput.input_id])
+    spentby = relationship('TransactionInput', foreign_keys=[spentby_id])
 

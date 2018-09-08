@@ -2,9 +2,14 @@ from binascii import hexlify, unhexlify
 from datetime import datetime
 from decimal import Decimal
 from cachetools import LFUCache, RRCache
-from sqlalchemy import tuple_, or_, func as sqlfunc
+from sqlalchemy import create_engine, tuple_, or_, func as sqlfunc
+from sqlalchemy.orm import sessionmaker
+from sys import version_info
 
 from models import *
+
+
+INTEGER_TYPES = [int] if version_info[0] > 2 else [int, long]
 
 
 class DatabaseSession(object):
@@ -19,7 +24,7 @@ class DatabaseSession(object):
     def __enter__(self):
         return self
 
-    def __exit__(self, type, value, traceback):
+    def __exit__(self, exc_type, exc_value, traceback):
         self.flush()
 
     def flush(self):
@@ -27,17 +32,17 @@ class DatabaseSession(object):
         self.session.close()
 
     def chaintip(self):
-        if self._chaintip == None:
-            self._chaintip = self.session.query(Block).filter(Block.height != None).order_by(Block.height.desc()).first()
+        if self._chaintip is None:
+            self._chaintip = self.session.query(Block).filter(Block.height is not None).order_by(Block.height.desc()).first()
         return self._chaintip
 
     def block(self, blockid):
-        if type(blockid) in [ int, long ]:
+        if type(blockid) in INTEGER_TYPES:
             pass
-        elif not len(blockid) in [ 32, 64 ]:
+        elif not len(blockid) in 32 * [1, 2]:
             blockid = int(blockid)
 
-        if type(blockid) in [ int, long ]:
+        if type(blockid) in INTEGER_TYPES:
             return self.session.query(Block).filter(Block.height == blockid).first()
 
         return self.session.query(Block).filter(Block.hash == (unhexlify(blockid) if len(blockid) == 64 else blockid)).first()
@@ -55,11 +60,11 @@ class DatabaseSession(object):
         if _txid in self.txid_cache:
             return self.txid_cache[_txid]
         tx = self.transaction(txid)
-        return tx.id if tx != None else None
+        return tx.id if tx is not None else None
 
     def latest_transactions(self, confirmed_only=False, limit=100):
         if confirmed_only:
-            return self.session.query(Transaction).filter(Transaction.confirmation_id != None).order_by(Transaction.id.desc()).limit(limit).all()
+            return self.session.query(Transaction).filter(Transaction.confirmation_id is not None).order_by(Transaction.id.desc()).limit(limit).all()
         return self.session.query(Transaction).order_by(Transaction.id.desc()).limit(limit).all()
 
     def pool_stats(self, since):
@@ -69,39 +74,48 @@ class DatabaseSession(object):
             sqlfunc.max(Block.height).label('lastblock'),
             Pool.website,
             Pool.graphcolor
-        ).join(Block).filter(Block.timestamp >= since).group_by(Pool.name).all();
-        return [ dict(zip(('name', 'amountmined', 'latestblock', 'website', 'graphcolor'), stats)) for stats in results ]
+        ).join(Block).filter(Block.timestamp >= since).group_by(Pool.name).all()
+        return [dict(zip(('name', 'amountmined', 'latestblock', 'website', 'graphcolor'), stats)) for stats in results]
 
     def network_stats(self, since):
         block_stats = self.session.query(
             sqlfunc.count(Block.id)
-        ).filter(Block.timestamp >= since).filter(Block.height != None).all()[0]
+        ).filter(Block.timestamp >= since).filter(Block.height is not None).all()[0]
         transaction_stats = self.session.query(
             sqlfunc.count(Block.id),
             sqlfunc.sum(Transaction.totalvalue)
-        ).join(BlockTransaction).join(Transaction, Transaction.id==BlockTransaction.transaction_id).filter(Block.timestamp >= since).filter(Block.height != None).filter(Transaction.coinbaseinfo == None).all()[0]
-        return dict(zip(('blocks', 'transactions', 'transactedvalue'), ( block_stats[0], transaction_stats[0], transaction_stats[1] )))
+        ).join(
+            BlockTransaction
+        ).join(
+            Transaction,
+            Transaction.id == BlockTransaction.transaction_id
+        ).filter(
+            Block.timestamp >= since,
+            Block.height is not None,
+            Transaction.coinbaseinfo is None
+        ).all()[0]
+        return dict(zip(('blocks', 'transactions', 'transactedvalue'), (block_stats[0], transaction_stats[0], transaction_stats[1])))
 
     def mempool(self):
-        return self.session.query(Transaction).filter(Transaction.confirmation_id == None).filter(Transaction.coinbaseinfo == None).order_by(Transaction.id.desc()).all()
+        return self.session.query(Transaction).filter(Transaction.confirmation_id is None).filter(Transaction.coinbaseinfo is None).order_by(Transaction.id.desc()).all()
 
     def import_blockinfo(self, blockinfo, runtime_metadata=None, tx_resolver=None):
         # Genesis block workaround
         if blockinfo['height'] == 0:
             blockinfo['tx'] = []
 
-        print('Adding  blk %s%s' % (blockinfo['hash'], '' if runtime_metadata == None else (' (via %s)' % runtime_metadata['relayip'])))
+        print('Adding  blk %s%s' % (blockinfo['hash'], '' if runtime_metadata is None else (' (via %s)' % runtime_metadata['relayip'])))
 
         coinbase_signatures = {}
         for txid in blockinfo['tx']:
-            if self.transaction_internal_id(txid) == None and tx_resolver != None:
+            if self.transaction_internal_id(txid) is None and tx_resolver is not None:
                 txinfo, tx_runtime_metadata = tx_resolver(txid)
                 self.import_transaction(txinfo, tx_runtime_metadata, coinbase_signatures=coinbase_signatures)
 
-        hash = unhexlify(blockinfo['hash'])
-        block = self.block(hash)
+        blockhash = unhexlify(blockinfo['hash'])
+        block = self.block(blockhash)
 
-        if block != None:
+        if block is not None:
             block.height = int(blockinfo['height'])
             self.session.commit()
             self._chaintip = None
@@ -115,8 +129,8 @@ class DatabaseSession(object):
         block.size = blockinfo['size']
         block.timestamp = datetime.utcfromtimestamp(blockinfo['time'])
         block.difficulty = blockinfo['difficulty']
-        block.firstseen = runtime_metadata['relaytime'] if runtime_metadata != None else None
-        block.relayedby = runtime_metadata['relayip'] if runtime_metadata != None else None
+        block.firstseen = runtime_metadata['relaytime'] if runtime_metadata is not None else None
+        block.relayedby = runtime_metadata['relayip'] if runtime_metadata is not None else None
         block.miner_id = None
 
         self.session.add(block)
@@ -129,7 +143,7 @@ class DatabaseSession(object):
             print('Adding  cb  %s' % coinbase_signatures.keys()[0])
             self.add_coinbase_data(block, coinbase_signatures.keys()[0], coinbase_signatures.values()[0][0], coinbase_signatures.values()[0][1])
 
-            if runtime_metadata != None:
+            if runtime_metadata is not None:
                 tx = self.transaction(coinbase_signatures.keys()[0])
                 tx.firstseen = block.firstseen
                 tx.relayedby = block.relayedby
@@ -148,34 +162,37 @@ class DatabaseSession(object):
     def orphan_block(self, height):
         block = self.block(height)
 
-        if block != None:
+        if block is not None:
             for txref in self.session.query(BlockTransaction).filter(BlockTransaction.block_id == block.id).all():
                 txref.transaction.confirmation = None
-                for input in txref.transaction.inputs:
-                    input.input.spentby_id = None
+                for tx_input in txref.transaction.inputs:
+                    tx_input.input.spentby_id = None
 
             block.height = None
             self.session.commit()
 
     def import_transaction(self, txinfo, tx_runtime_metadata=None, coinbase_signatures=None):
-        coinbase_inputs = filter(lambda txin: 'coinbase' in txin, txinfo['vin'])
-        regular_inputs = filter(lambda txin: not 'coinbase' in txin, txinfo['vin'])
+        coinbase_inputs = list(filter(lambda txin: 'coinbase' in txin, txinfo['vin']))
+        regular_inputs = list(filter(lambda txin: 'coinbase' not in txin, txinfo['vin']))
 
         is_coinbase_tx = len(coinbase_inputs) > 0
 
-        if coinbase_signatures != None and is_coinbase_tx:
+        if coinbase_signatures is not None and is_coinbase_tx:
             coinbase_regular_outputs = filter(
                 lambda txo: txo['value'] > 0.0 and 'addresses' in txo['scriptPubKey'] and len(txo['scriptPubKey']['addresses']) == 1,
                 txinfo['vout']
             )
             coinbase_signatures[txinfo['txid']] = (coinbase_inputs[0]['coinbase'], [
-                    (txo['n'], txo['scriptPubKey']['addresses'][0], txo['value'])
-                for txo in
-                    coinbase_regular_outputs
+                (txo['n'], txo['scriptPubKey']['addresses'][0], txo['value']) for txo in coinbase_regular_outputs
             ])
 
         if len(regular_inputs) > 0:
-            print('Adding  tx  %s (%d inputs, %d outputs, via %s)' % (txinfo['txid'], len(regular_inputs), len(txinfo['vout']), tx_runtime_metadata['relayip'] if tx_runtime_metadata != None else 'unknown'))
+            print('Adding  tx  %s (%d inputs, %d outputs, via %s)' % (
+                txinfo['txid'],
+                len(regular_inputs),
+                len(txinfo['vout']),
+                tx_runtime_metadata['relayip'] if tx_runtime_metadata is not None else 'unknown'
+            ))
         else:
             print('Adding  tx  %s (coinbase, %d outputs)' % (txinfo['txid'], len(txinfo['vout'])))
 
@@ -185,8 +202,8 @@ class DatabaseSession(object):
         tx.size = txinfo['size']
         tx.fee = -1.0
         tx.totalvalue = -1.0
-        tx.firstseen = tx_runtime_metadata['relaytime'] if tx_runtime_metadata != None else None
-        tx.relayedby = tx_runtime_metadata['relayip'] if tx_runtime_metadata != None else None
+        tx.firstseen = tx_runtime_metadata['relaytime'] if tx_runtime_metadata is not None else None
+        tx.relayedby = tx_runtime_metadata['relayip'] if tx_runtime_metadata is not None else None
         tx.confirmation_id = None
 
         self.session.add(tx)
@@ -195,7 +212,6 @@ class DatabaseSession(object):
         self.txid_cache[tx.txid] = tx.id
 
         total_in = Decimal(0.0)
-        total_out = Decimal(0.0)
 
         utxo_cache_hits = 0
         txid_cache_hits = 0
@@ -217,22 +233,35 @@ class DatabaseSession(object):
 
             total_in = self.import_tx_inputs(regular_inputs, tx.id, txo_map)
 
-        address_map = dict({ outp['n']: self.get_or_create_output_address(outp['scriptPubKey'], flushdb=False) for outp in txinfo['vout'] })
+        address_map = dict({outp['n']: self.get_or_create_output_address(outp['scriptPubKey'], flushdb=False) for outp in txinfo['vout']})
         self.session.flush()
 
         utxos, total_out = self.import_tx_outputs(txinfo['vout'], tx.id, address_map)
         tx.totalvalue, tx.fee = self.calculate_tx_totals(total_in, total_out, coinbase=is_coinbase_tx)
 
-        self.session.bulk_save_objects(utxos, return_defaults=(self.utxo_cache != None))
+        self.session.bulk_save_objects(utxos, return_defaults=(self.utxo_cache is not None))
 
         print('Commit  tx  %s' % hexlify(tx.txid))
         self.session.commit()
 
-        if self.utxo_cache != None:
+        if self.utxo_cache is not None:
             self.update_utxo_cache(txinfo['txid'], tx.id, utxos)
-            print('Added   tx  %s (utxo cache: %d, hit %d/%d, txid cache: %d, address cache: %d)' % (txinfo['txid'], self.utxo_cache.currsize, utxo_cache_hits, len(regular_inputs), self.txid_cache.currsize, self.address_cache.currsize))
+            print('Added   tx  %s (utxo cache: %d, hit %d/%d, txid cache: %d, address cache: %d)' % (
+                txinfo['txid'],
+                self.utxo_cache.currsize,
+                utxo_cache_hits,
+                len(regular_inputs),
+                self.txid_cache.currsize,
+                self.address_cache.currsize
+            ))
         else:
-            print('Added   tx  %s (txid cache: %d, hit %d/%d, address cache: %d)' % (txinfo['txid'], self.txid_cache.currsize, txid_cache_hits, len(regular_inputs), self.address_cache.currsize))
+            print('Added   tx  %s (txid cache: %d, hit %d/%d, address cache: %d)' % (
+                txinfo['txid'],
+                self.txid_cache.currsize,
+                txid_cache_hits,
+                len(regular_inputs),
+                self.address_cache.currsize
+            ))
 
         return tx
 
@@ -278,14 +307,14 @@ class DatabaseSession(object):
         return total_in, total_in - total_out
 
     def update_utxo_cache(self, txid, internal_tx_id, utxos):
-        if self.utxo_cache == None:
+        if self.utxo_cache is None:
             return
         for utxo in utxos:
             if TXOUT_TYPES.resolve(utxo.type) != TXOUT_TYPES.RAW:
                 self.utxo_cache[txid + '_' + str(utxo.index)] = (internal_tx_id, utxo.id, utxo.amount)
 
     def lookup_input_utxos_from_utxo_cache(self, inputs):
-        if self.utxo_cache == None:
+        if self.utxo_cache is None:
             return {}, inputs
 
         cache_misses = []
@@ -303,18 +332,18 @@ class DatabaseSession(object):
 
     def lookup_input_utxos_using_txid_cache(self, inputs):
         queryfilter = tuple([
-                tuple_(TransactionOutput.transaction_id, TransactionOutput.index) == (self.txid_cache[txo[0]], txo[1])
+            tuple_(TransactionOutput.transaction_id, TransactionOutput.index) == (self.txid_cache[txo[0]], txo[1])
             for txo in
-                filter(lambda txo: txo[0] in self.txid_cache, [
-                        (inp['_txid'], inp['vout'])
-                    for inp in
-                        inputs
-                ])
+            filter(lambda txo: txo[0] in self.txid_cache, [
+                (inp['_txid'], inp['vout'])
+                for inp in
+                inputs
+            ])
         ])
         ctx_txo_map = {
-                (str(txo.transaction_id) + '_' + str(txo.index)): (txo.id, txo.amount)
+            (str(txo.transaction_id) + '_' + str(txo.index)): (txo.id, txo.amount)
             for txo in
-                self.session.query(TransactionOutput).filter(or_(*queryfilter)).all()
+            self.session.query(TransactionOutput).filter(or_(*queryfilter)).all()
         } if queryfilter != () else {}
 
         cache_misses = []
@@ -332,9 +361,8 @@ class DatabaseSession(object):
             return {}
 
         queryfilter = tuple([
-                tuple_(Transaction.txid, TransactionOutput.index) == (inp['_txid'], inp['vout'])
-            for inp in
-                inputs
+            tuple_(Transaction.txid, TransactionOutput.index) == (inp['_txid'], inp['vout'])
+            for inp in inputs
         ])
         results = self.session.query(
             TransactionOutput,
@@ -344,9 +372,8 @@ class DatabaseSession(object):
         ).filter(or_(*queryfilter)).all()
 
         return {
-                (hexlify(tx.txid) + '_' + str(txo.index)): (txo.id, txo.amount)
-            for (txo, tx) in
-                results
+            (hexlify(tx.txid) + '_' + str(txo.index)): (txo.id, txo.amount)
+            for (txo, tx) in results
         }
 
     def confirm_transaction(self, txid, internal_block_id, tx_resolver=None):
@@ -354,24 +381,26 @@ class DatabaseSession(object):
 
         tx_id = self.transaction_internal_id(txid)
 
-        if tx_id == None and tx_resolver != None:
+        if tx_id is None and tx_resolver is not None:
             txinfo, tx_runtime_metadata = tx_resolver(txid)
             tx_id = self.import_transaction(txinfo, tx_runtime_metadata).id
 
         blockref = self.session.query(BlockTransaction).filter(BlockTransaction.block_id == internal_block_id).filter(BlockTransaction.transaction_id == tx_id).first()
-        if blockref == None:
+        if blockref is None:
             blockref = BlockTransaction()
             blockref.block_id = internal_block_id
             blockref.transaction_id = tx_id
             self.session.add(blockref)
             self.session.flush()
 
-        #tx.confirmation_id = blockref.id
+        # tx.confirmation_id = blockref.id
         #
-        #for input in tx.inputs:
+        # for input in tx.inputs:
         #    input.input.spentby_id = input.id
-        self.session.execute('UPDATE `transaction` SET `confirmation` = :blockref WHERE `id` = :tx_id;', { 'blockref': blockref.id, 'tx_id': tx_id })
-        self.session.execute('UPDATE `txout` LEFT JOIN `txin` ON `txout`.`id` = `txin`.`input` SET `spentby` = `txin`.`id` WHERE `txin`.`transaction` = :tx_id;', { 'tx_id': tx_id })
+        self.session.execute('UPDATE `transaction` SET `confirmation` = :blockref WHERE `id` = :tx_id;', {'blockref': blockref.id, 'tx_id': tx_id})
+        self.session.execute('UPDATE `txout` LEFT JOIN `txin` ON `txout`.`id` = `txin`.`input` SET `spentby` = `txin`.`id` WHERE `txin`.`transaction` = :tx_id;', {
+            'tx_id': tx_id
+        })
 
     def add_coinbase_data(self, block, txid, signature, outputs):
         coinbaseinfo = CoinbaseInfo()
@@ -380,10 +409,15 @@ class DatabaseSession(object):
         coinbaseinfo.raw = unhexlify(signature)
         coinbaseinfo.signature = None
 
-        totalout = sum([ o[2] for o in outputs ])
-        best_output = filter(lambda o: o[2] > (totalout * 95 / 100), outputs)
+        totalout = sum([o[2] for o in outputs])
+        best_output = list(filter(lambda o: o[2] > (totalout * 95 / 100), outputs))
         best_output = best_output[0] if len(best_output) > 0 else None
-        coinbaseinfo.mainoutput_id = self.session.query(TransactionOutput).filter(TransactionOutput.transaction_id == coinbaseinfo.transaction_id, TransactionOutput.index == best_output[0]).first().id if best_output != None else None
+        coinbaseinfo.mainoutput_id = self.session.query(
+            TransactionOutput
+        ).filter(
+            TransactionOutput.transaction_id == coinbaseinfo.transaction_id,
+            TransactionOutput.index == best_output[0]
+        ).first().id if best_output is not None else None
 
         solo = len(coinbaseinfo.raw) <= 8
 
@@ -400,15 +434,15 @@ class DatabaseSession(object):
         self.find_and_set_miner(block, coinbaseinfo, solo)
 
     def find_and_set_miner(self, block, coinbaseinfo, solo):
-        if not solo and coinbaseinfo.signature != None:
+        if not solo and coinbaseinfo.signature is not None:
             pool_cbsig = self.session.query(PoolCoinbaseSignature).filter(PoolCoinbaseSignature.signature == coinbaseinfo.signature).first()
-            if pool_cbsig != None:
+            if pool_cbsig is not None:
                 block.miner_id = pool_cbsig.pool_id
                 return
 
-        if coinbaseinfo.mainoutput != None and coinbaseinfo.mainoutput.address_id != None:
+        if coinbaseinfo.mainoutput is not None and coinbaseinfo.mainoutput.address_id is not None:
             pool_addr = self.session.query(PoolAddress).filter(PoolAddress.address_id == coinbaseinfo.mainoutput.address_id).first()
-            if pool_addr != None:
+            if pool_addr is not None:
                 block.miner_id = pool_addr.pool_id
                 return
 
@@ -451,7 +485,7 @@ class DatabaseSession(object):
                 db_address = self.address_cache[address]
             else:
                 db_address = self.session.query(Address).filter(Address.address == address).first()
-                if db_address != None:
+                if db_address is not None:
                     self.address_cache[address] = CachedAddress(db_address)
         else:
             db_address = None
@@ -463,7 +497,7 @@ class DatabaseSession(object):
             else:
                 addr_type = ADDRESS_TYPES.RAW
 
-        if db_address == None:
+        if db_address is None:
             db_address = Address()
             db_address.address = address
             db_address.type = ADDRESS_TYPES.internal_id(addr_type)
@@ -476,13 +510,14 @@ class DatabaseSession(object):
 
         return db_address
 
+
 class DatabaseIO(DatabaseSession):
     def __init__(self, url, utxo_cache=False, debug=False):
         self.sessionmaker = sessionmaker(bind=create_engine(url, encoding='utf8', echo=debug))
 
-        self.address_cache = LFUCache(maxsize = 16384)
-        self.txid_cache = RRCache(maxsize = 131072)
-        self.utxo_cache = RRCache(maxsize = 262144) if utxo_cache else None
+        self.address_cache = LFUCache(maxsize=16384)
+        self.txid_cache = RRCache(maxsize=131072)
+        self.utxo_cache = RRCache(maxsize=262144) if utxo_cache else None
 
         super(DatabaseIO, self).__init__(self.sessionmaker(), address_cache=self.address_cache, txid_cache=self.txid_cache, utxo_cache=self.utxo_cache)
 

@@ -1,7 +1,7 @@
 import json
 
-from datetime import datetime
 from gevent import sleep
+
 
 class Event(object):
     def __init__(self, event, data, channel='general'):
@@ -44,11 +44,12 @@ class EventSubscriber(object):
     def serialize(self, event):
         return event
 
+
 class JavascriptEventSourceSubscriber(EventSubscriber):
     def serialize(self, event):
         # FIXME: Doesn't seem to be working
-        #return '\n'.join([ ': '.join([ 'event', event.event ]), ': '.join([ 'data', json.dumps(event.data) ]), '', '' ])
-        return '\n'.join([ ': '.join([ 'data', json.dumps(event.__dict__) ]), '', '' ])
+        # return '\n'.join([ ': '.join([ 'event', event.event ]), ': '.join([ 'data', json.dumps(event.data) ]), '', '' ])
+        return '\n'.join([': '.join(['data', json.dumps(event.__dict__)]), '', ''])
 
 
 class EventStream(object):
@@ -56,14 +57,14 @@ class EventStream(object):
         self.subscribers = []
 
     def subscribe(self, subscriber):
-        if not subscriber in self.subscribers:
+        if subscriber not in self.subscribers:
             self.subscribers.append(subscriber)
 
     def unsubscribe(self, subscriber):
         self.subscribers = filter(lambda s: s != subscriber, self.subscribers)
 
-    def subscriber(self, type=JavascriptEventSourceSubscriber, channels=['general']):
-        subscriber = type(channels)
+    def subscriber(self, subtype=JavascriptEventSourceSubscriber, channels=['general']):
+        subscriber = subtype(channels)
         subscriber.subscribe(self)
         return subscriber.read()
 

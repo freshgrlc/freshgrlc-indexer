@@ -1,7 +1,9 @@
 from bitcoinrpc.authproxy import AuthServiceProxy, JSONRPCException
 
+
 class TransactionSignError(Exception):
     pass
+
 
 class Daemon(AuthServiceProxy):
     def __init__(self, url):

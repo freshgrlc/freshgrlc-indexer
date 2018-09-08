@@ -38,6 +38,7 @@ def blocks():
         with QueryDataPostProcessor() as pp:
             pp.pagination(backwards_indexes=True, tipresolver=(lambda: session.chaintip().height + 1))
             pp.baseurl('/blocks/<Block.hash>/').reflinks('miner', 'transactions').autoexpand()
+            pp.reflink('block', '/blocks/<query:transaction.block.hash>/', ['hash', 'height'])
             return pp.process(session.blocks(pp.start, pp.limit)).json()
 
 
@@ -47,6 +48,7 @@ def block(blockid):
     with db.new_session() as session:
         with QueryDataPostProcessor() as pp:
             pp.baseurl('/blocks/<Block.hash>/').reflinks('miner', 'transactions').autoexpand()
+            pp.reflink('block', '/blocks/<query:transaction.block.hash>/', ['hash', 'height'])
             return pp.process(session.block(blockid)).json()
 
 
@@ -56,6 +58,7 @@ def blockminer(blockid):
     with db.new_session() as session:
         with QueryDataPostProcessor() as pp:
             pp.resolve_keys(Block.miner)
+            pp.reflink('block', '/blocks/<query:transaction.block.hash>/', ['hash', 'height'])
             return pp.process(session.block(blockid))['miner'].json()
 
 
@@ -75,6 +78,8 @@ def transactions():
         with QueryDataPostProcessor() as pp:
             pp.pagination()
             pp.baseurl('/transactions/<Transaction.txid>/')
+            pp.reflink('block', '/blocks/<query:transaction.block.hash>/', ['hash', 'height']).autoexpand()
+            pp.reflinks('transactions')
 
             query_confirmed = request.args.get('confirmed')
             if query_confirmed is None or query_confirmed == '':

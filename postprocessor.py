@@ -37,8 +37,15 @@ def substitute_contextinfo(template, context):
 
     while len(parts) > 0:
         key, template_part = tuple(parts.pop(0).split('>'))
-        obj, key = tuple(key.split('.'))
-        result += context[obj][key] + template_part
+        obj, key = tuple(key.split('.', 1))
+        if obj[0:6] == 'query:':
+            obj = context[obj]
+            while '.' in key:
+                refname, key = key.split('.', 1)
+                obj = getattr(obj, refname)
+            result += json_preprocess_value(key, getattr(obj, key), obj.__class__) + template_part
+        else:
+            result += context[obj][key] + template_part
 
     return result
 
@@ -68,6 +75,9 @@ def json_preprocess_dbobject(obj, resolve_foreignkeys=None, whitelist=None, refl
     my_context = context.copy()
     my_context[obj.__class__.__name__] = converted
     my_context[obj.__class__.__tablename__] = converted
+    my_context['query:' + obj.__class__.__tablename__] = obj
+
+    print(my_context, reflinks)
 
     for foreignkey in my_foreignkeys:
         colname = str(foreignkey).split('.')[-1]
@@ -78,7 +88,11 @@ def json_preprocess_dbobject(obj, resolve_foreignkeys=None, whitelist=None, refl
 
         if refid is not None:
             if colname in reflinks.keys():
-                converted[colname] = {'href': substitute_contextinfo(reflinks[colname], my_context)}
+                converted[colname] = {'href': substitute_contextinfo(reflinks[colname][0], my_context)}
+                if reflinks[colname][1] is not None and len(reflinks[colname][1]) > 0:
+                    ref = getattr(obj, colname)
+                    for inline_resolve_key in reflinks[colname][1]:
+                        converted[colname][inline_resolve_key] = json_preprocess_value(inline_resolve_key, getattr(ref, inline_resolve_key), ref.__class__)
             else:
                 refs = getattr(obj, colname)
                 if isinstance(refs, list):
@@ -114,7 +128,7 @@ class QueryDataPostProcessor(Configuration):
         self.start = None
         self.limit = None
         self.end = None
-        self.baseurl = None
+        self._baseurl = None
         self._reflinks = {}
 
     def __enter__(self):
@@ -151,16 +165,16 @@ class QueryDataPostProcessor(Configuration):
         return self
 
     def baseurl(self, url):
-        self.baseurl = url
+        self._baseurl = url
         return self
 
-    def reflink(self, key, template):
-        self._reflinks[key] = template
+    def reflink(self, key, template, inline_resolve=[]):
+        self._reflinks[key] = (self.API_ENDPOINT + template, inline_resolve)
         return self
 
     def reflinks(self, *keys):
         for key in keys:
-            self.reflink(key, self.API_ENDPOINT + self.baseurl + key + '/')
+            self.reflink(key, self._baseurl + key + '/')
         return self
 
     def autoexpand(self):

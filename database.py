@@ -63,9 +63,20 @@ class DatabaseSession(object):
         return tx.id if tx is not None else None
 
     def latest_transactions(self, confirmed_only=False, limit=100):
-        if confirmed_only:
-            return self.session.query(Transaction).filter(Transaction.confirmation_id is not None).order_by(Transaction.id.desc()).limit(limit).all()
-        return self.session.query(Transaction).order_by(Transaction.id.desc()).limit(limit).all()
+        return [
+            result[0]
+            for result in self.session.query(
+                Transaction,
+                BlockTransaction,
+                Block
+            ).join(
+                Transaction.confirmation,
+                isouter=(not confirmed_only)
+            ).join(
+                Block,
+                isouter=(not confirmed_only)
+            ).order_by(Transaction.id.desc()).limit(limit).all()
+        ]
 
     def pool_stats(self, since):
         results = self.session.query(

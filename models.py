@@ -1,3 +1,4 @@
+from binascii import hexlify
 from sqlalchemy import Column, ForeignKey, Integer, BigInteger, Float, String, CHAR, Binary, VARBINARY, DateTime
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
@@ -228,12 +229,17 @@ class Transaction(Base):
     outputs = relationship('TransactionOutput', back_populates='transaction')
 
     API_DATA_FIELDS = [txid, size, fee, totalvalue, firstseen, 'Transaction.confirmed', 'Transaction.coinbase']
+    POSTPROCESS_RESOLVE_FOREIGN_KEYS = ['Transaction.block']
 
     def __getattribute__(self, name):
         if name == 'confirmed':
-            return self.confirmation_id is None
+            return self.confirmation_id is not None
         if name == 'coinbase':
             return len(self.coinbaseinfo) > 0
+        if name == 'block':
+            return self.confirmation.block if self.confirmation_id is not None else None
+        if name == 'block_id':
+            return self.confirmation.block_id if self.confirmation_id is not None else None
         return super(Transaction, self).__getattribute__(name)
 
 

@@ -77,8 +77,6 @@ def json_preprocess_dbobject(obj, resolve_foreignkeys=None, whitelist=None, refl
     my_context[obj.__class__.__tablename__] = converted
     my_context['query:' + obj.__class__.__tablename__] = obj
 
-    print(my_context, reflinks)
-
     for foreignkey in my_foreignkeys:
         colname = str(foreignkey).split('.')[-1]
         try:

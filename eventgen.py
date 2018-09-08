@@ -46,11 +46,13 @@ class IndexerEventStream(EventStream):
 
     def broadcast_new_blocks(self, blocks):
         with QueryDataPostProcessor() as pp:
+            pp.reflink('block', '/blocks/<query:transaction.block.hash>/', ['hash', 'height'])
             for block in blocks:
                 self.publish(Event('newblock', pp.process(block).data, channel='blocks'))
 
     def broadcast_new_txs(self, txs):
         with QueryDataPostProcessor() as pp:
+            pp.reflink('block', '/blocks/<query:transaction.block.hash>/', ['hash', 'height'])
             for tx in reversed(txs):
                 self.publish(Event('newtx', pp.process(tx).data, channel='transactions'))
 

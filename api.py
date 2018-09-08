@@ -67,7 +67,8 @@ def blockminer(blockid):
 def blocktransactions(blockid):
     with db.new_session() as session:
         with QueryDataPostProcessor() as pp:
-            pp.resolve_keys('Block.transactions')
+            pp.resolve_keys('Block.transactions', 'Transaction.block')
+            pp.reflink('block', '/blocks/<query:transaction.block.hash>/', ['hash', 'height'])
             return pp.process(session.block(blockid))['transactions'].json()
 
 
@@ -78,8 +79,10 @@ def transactions():
         with QueryDataPostProcessor() as pp:
             pp.pagination()
             pp.baseurl('/transactions/<Transaction.txid>/')
-            pp.reflink('block', '/blocks/<query:transaction.block.hash>/', ['hash', 'height']).autoexpand()
-            pp.reflinks('transactions')
+            pp.reflink('block', '/blocks/<query:transaction.block.hash>/', ['hash', 'height'])
+            pp.reflink('miner', '/blocks/<query:transaction.block.hash>/miner')
+            pp.autoexpand()
+            pp.reflink('transactions', '/blocks/<query:transaction.block.hash>/transactions/')
 
             query_confirmed = request.args.get('confirmed')
             if query_confirmed is None or query_confirmed == '':
@@ -92,6 +95,20 @@ def transactions():
                 data = []
 
             return pp.process(data).json()
+
+
+@webapp.route('/transactions/<txid>/')
+@cross_origin()
+def transaction(txid):
+    with db.new_session() as session:
+        with QueryDataPostProcessor() as pp:
+            pp.baseurl('/transactions/<Transaction.txid>/')
+            pp.reflink('block', '/blocks/<query:transaction.block.hash>/', ['hash', 'height'])
+            pp.reflink('miner', '/blocks/<query:transaction.block.hash>/miner')
+            pp.autoexpand()
+            pp.reflink('transactions', '/blocks/<query:transaction.block.hash>/transactions/')
+
+            return pp.process(session.transaction(txid, include_confirmation_info=True)).json()
 
 
 @webapp.route('/networkstats/')

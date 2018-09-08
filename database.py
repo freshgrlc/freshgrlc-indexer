@@ -50,10 +50,27 @@ class DatabaseSession(object):
     def blocks(self, start_height, limit):
         return self.session.query(Block).filter(Block.height >= start_height).order_by(Block.height).limit(limit).all()
 
-    def transaction(self, txid):
+    def query_transactions(self, include_confirmation_info=False, confirmed_only=False):
+        if not include_confirmation_info:
+            return self.session.query(Transaction)
+
+        return self.session.query(
+            Transaction,
+            BlockTransaction,
+            Block
+        ).join(
+            Transaction.confirmation,
+            isouter=(not confirmed_only)
+        ).join(
+            Block,
+            isouter=(not confirmed_only)
+        )
+
+    def transaction(self, txid, include_confirmation_info=False):
         if len(txid) == 64:
             txid = unhexlify(txid)
-        return self.session.query(Transaction).filter(Transaction.txid == txid).first()
+        result = self.query_transactions(include_confirmation_info=include_confirmation_info).filter(Transaction.txid == txid).first()
+        return result if not include_confirmation_info else result[0]
 
     def transaction_internal_id(self, txid):
         _txid = unhexlify(txid)
@@ -65,17 +82,7 @@ class DatabaseSession(object):
     def latest_transactions(self, confirmed_only=False, limit=100):
         return [
             result[0]
-            for result in self.session.query(
-                Transaction,
-                BlockTransaction,
-                Block
-            ).join(
-                Transaction.confirmation,
-                isouter=(not confirmed_only)
-            ).join(
-                Block,
-                isouter=(not confirmed_only)
-            ).order_by(Transaction.id.desc()).limit(limit).all()
+            for result in self.query_transactions(include_confirmation_info=True, confirmed_only=confirmed_only).order_by(Transaction.id.desc()).limit(limit).all()
         ]
 
     def pool_stats(self, since):

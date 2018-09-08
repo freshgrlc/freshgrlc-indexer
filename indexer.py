@@ -71,7 +71,7 @@ class Context(Configuration):
         chaintip_height = self.daemon.get_current_height()
         indexer_tip = self.db.chaintip()
 
-        if indexer_tip is None:
+        if indexer_tip == None:
             return -1, -1, chaintip_height
 
         ancestor_height = indexer_tip.height
@@ -107,7 +107,7 @@ class Context(Configuration):
         self.db.import_blockinfo(self.daemon.getblock(blockhash), runtime_metadata=runtime_info, tx_resolver=self.get_transaction_with_metadata)
 
     def query_mempool(self):
-        new_txs = filter(lambda tx: tx not in self.mempoolcache, self.daemon.getrawmempool())
+        new_txs = list(filter(lambda tx: tx not in self.mempoolcache, self.daemon.getrawmempool()))
         if len(new_txs) > 0:
             self.update_hash_cache()
             for txid in new_txs:

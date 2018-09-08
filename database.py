@@ -33,7 +33,7 @@ class DatabaseSession(object):
 
     def chaintip(self):
         if self._chaintip is None:
-            self._chaintip = self.session.query(Block).filter(Block.height is not None).order_by(Block.height.desc()).first()
+            self._chaintip = self.session.query(Block).filter(Block.height != None).order_by(Block.height.desc()).first()
         return self._chaintip
 
     def block(self, blockid):
@@ -91,7 +91,7 @@ class DatabaseSession(object):
     def network_stats(self, since):
         block_stats = self.session.query(
             sqlfunc.count(Block.id)
-        ).filter(Block.timestamp >= since).filter(Block.height is not None).all()[0]
+        ).filter(Block.timestamp >= since).filter(Block.height != None).all()[0]
         transaction_stats = self.session.query(
             sqlfunc.count(Block.id),
             sqlfunc.sum(Transaction.totalvalue)
@@ -102,13 +102,13 @@ class DatabaseSession(object):
             Transaction.id == BlockTransaction.transaction_id
         ).filter(
             Block.timestamp >= since,
-            Block.height is not None,
-            Transaction.coinbaseinfo is None
+            Block.height != None,
+            Transaction.coinbaseinfo == None
         ).all()[0]
         return dict(zip(('blocks', 'transactions', 'transactedvalue'), (block_stats[0], transaction_stats[0], transaction_stats[1])))
 
     def mempool(self):
-        return self.session.query(Transaction).filter(Transaction.confirmation_id is None).filter(Transaction.coinbaseinfo is None).order_by(Transaction.id.desc()).all()
+        return self.session.query(Transaction).filter(Transaction.confirmation_id == None).filter(Transaction.coinbaseinfo == None).order_by(Transaction.id.desc()).all()
 
     def import_blockinfo(self, blockinfo, runtime_metadata=None, tx_resolver=None):
         # Genesis block workaround
@@ -126,7 +126,7 @@ class DatabaseSession(object):
         blockhash = unhexlify(blockinfo['hash'])
         block = self.block(blockhash)
 
-        if block is not None:
+        if block != None:
             block.height = int(blockinfo['height'])
             self.session.commit()
             self._chaintip = None
@@ -173,7 +173,7 @@ class DatabaseSession(object):
     def orphan_block(self, height):
         block = self.block(height)
 
-        if block is not None:
+        if block != None:
             for txref in self.session.query(BlockTransaction).filter(BlockTransaction.block_id == block.id).all():
                 txref.transaction.confirmation = None
                 for tx_input in txref.transaction.inputs:
@@ -397,7 +397,7 @@ class DatabaseSession(object):
             tx_id = self.import_transaction(txinfo, tx_runtime_metadata).id
 
         blockref = self.session.query(BlockTransaction).filter(BlockTransaction.block_id == internal_block_id).filter(BlockTransaction.transaction_id == tx_id).first()
-        if blockref is None:
+        if blockref == None:
             blockref = BlockTransaction()
             blockref.block_id = internal_block_id
             blockref.transaction_id = tx_id
@@ -447,13 +447,13 @@ class DatabaseSession(object):
     def find_and_set_miner(self, block, coinbaseinfo, solo):
         if not solo and coinbaseinfo.signature is not None:
             pool_cbsig = self.session.query(PoolCoinbaseSignature).filter(PoolCoinbaseSignature.signature == coinbaseinfo.signature).first()
-            if pool_cbsig is not None:
+            if pool_cbsig != None:
                 block.miner_id = pool_cbsig.pool_id
                 return
 
-        if coinbaseinfo.mainoutput is not None and coinbaseinfo.mainoutput.address_id is not None:
+        if coinbaseinfo.mainoutput != None and coinbaseinfo.mainoutput.address_id != None:
             pool_addr = self.session.query(PoolAddress).filter(PoolAddress.address_id == coinbaseinfo.mainoutput.address_id).first()
-            if pool_addr is not None:
+            if pool_addr != None:
                 block.miner_id = pool_addr.pool_id
                 return
 
@@ -496,7 +496,7 @@ class DatabaseSession(object):
                 db_address = self.address_cache[address]
             else:
                 db_address = self.session.query(Address).filter(Address.address == address).first()
-                if db_address is not None:
+                if db_address != None:
                     self.address_cache[address] = CachedAddress(db_address)
         else:
             db_address = None
@@ -508,7 +508,7 @@ class DatabaseSession(object):
             else:
                 addr_type = ADDRESS_TYPES.RAW
 
-        if db_address is None:
+        if db_address == None:
             db_address = Address()
             db_address.address = address
             db_address.type = ADDRESS_TYPES.internal_id(addr_type)

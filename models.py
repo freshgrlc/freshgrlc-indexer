@@ -233,13 +233,13 @@ class Transaction(Base):
 
     def __getattribute__(self, name):
         if name == 'confirmed':
-            return self.confirmation_id is not None
+            return self.confirmation_id != None
         if name == 'coinbase':
             return len(self.coinbaseinfo) > 0
         if name == 'block':
-            return self.confirmation.block if self.confirmation_id is not None else None
+            return self.confirmation.block if self.confirmation_id != None else None
         if name == 'block_id':
-            return self.confirmation.block_id if self.confirmation_id is not None else None
+            return self.confirmation.block_id if self.confirmation_id != None else None
         return super(Transaction, self).__getattribute__(name)
 
 

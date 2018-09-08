@@ -14,7 +14,7 @@ def convert_date(date):
 
 
 def json_preprocess_value(k, v, cls):
-    if v is None or type(v) == dict:
+    if v == None or type(v) == dict:
         return v
 
     try:
@@ -51,7 +51,7 @@ def substitute_contextinfo(template, context):
 
 
 def json_preprocess_dbobject(obj, resolve_foreignkeys=None, whitelist=None, reflinks={}, context={}):
-    if obj is None:
+    if obj == None:
         return
 
     try:
@@ -86,7 +86,7 @@ def json_preprocess_dbobject(obj, resolve_foreignkeys=None, whitelist=None, refl
         except AttributeError:
             refid = -1
 
-        if refid is not None:
+        if refid != None:
             if colname in reflinks.keys():
                 converted[colname] = {'href': substitute_contextinfo(reflinks[colname][0], my_context)}
                 if reflinks[colname][1] is not None and len(reflinks[colname][1]) > 0:

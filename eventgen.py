@@ -20,7 +20,7 @@ class Mempool(object):
 
     def process_block(self, block):
         lastlen = len(self.pool)
-        self.pool = filter(lambda tx: tx['txid'] not in [ hexlify(tx.txid) for tx in block.transactions ], self.pool)
+        self.pool = list(filter(lambda tx: tx['txid'] not in [hexlify(tx.txid) for tx in block.transactions], self.pool))
         if len(self.pool) != lastlen:
             self.dirty = True
 

@@ -54,7 +54,7 @@ class Address(object):
 
     @staticmethod
     def encode(pubkeyhash, version):
-        if not len(pubkeyhash) in 20 * [1, 2]:
+        if not len(pubkeyhash) in [20, 2*20]:
             raise InvalidHashException(pubkeyhash)
 
         if len(pubkeyhash) == 20:

@@ -39,7 +39,7 @@ class DatabaseSession(object):
     def block(self, blockid):
         if type(blockid) in INTEGER_TYPES:
             pass
-        elif not len(blockid) in 32 * [1, 2]:
+        elif not len(blockid) in [32, 2*32]:
             blockid = int(blockid)
 
         if type(blockid) in INTEGER_TYPES:

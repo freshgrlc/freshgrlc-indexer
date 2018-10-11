@@ -20,7 +20,7 @@ else:
 class LogWatcher(object):
     def __init__(self, path):
         self.path = path
-        self.last_size = self.current_size()
+        self.last_size = self.current_size() - 4096 if self.current_size() >= 4096 else 0
 
     def current_size(self):
         with open(self.path, 'r') as f:
@@ -47,7 +47,10 @@ class LogWatcher(object):
                 parts = line.split(' ')
                 if len(parts) > 6 and parts[2] == 'New' and parts[3] in ('tx', 'block') and parts[5] == 'from':
                     if not parts[4] in ret.keys():
-                        relaytime = datetime.strptime(' '.join(parts[0:2]), '%Y-%m-%d %H:%M:%S')
+                        try:
+                            relaytime = datetime.strptime(' '.join(parts[0:2]), '%Y-%m-%d %H:%M:%S')
+                        except ValueError:
+                            continue
                         relayip = parts[6].rsplit(':', 1)[0].lstrip('[').rstrip(']')
                         ret[parts[4]] = {'relaytime': relaytime, 'relayip': relayip}
         return ret

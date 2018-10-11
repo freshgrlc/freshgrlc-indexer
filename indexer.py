@@ -29,7 +29,7 @@ class LogWatcher(object):
 
     def has_new_data(self):
         newsize = self.current_size()
-        if newsize < self.last_size:    # Logfile rotation
+        if newsize < self.last_size - 1:    # Logfile rotation, no idea what's up with that -1, thankfully it does not hurt to have
             self.last_size = 0
         return newsize != self.last_size
 

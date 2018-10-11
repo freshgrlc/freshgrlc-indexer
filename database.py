@@ -142,7 +142,7 @@ class DatabaseSession(object):
 
         block = Block()
 
-        block.hash = hash
+        block.hash = blockhash
         block.height = int(blockinfo['height'])
         block.size = blockinfo['size']
         block.timestamp = datetime.utcfromtimestamp(blockinfo['time'])

@@ -137,10 +137,10 @@ def run():
         try:
             with Context() as c:
                 try:
+                    c.init_log_watcher()
                     print('\nPerforming initial sync...\n')
                     c.sync_blocks()
                     print('\nSwitching to live tracking of mempool and chaintip.\n')
-                    c.init_log_watcher()
                     while True:
                         sleep(1)
                         c.query_mempool()

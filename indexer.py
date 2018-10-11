@@ -18,9 +18,11 @@ else:
 
 
 class LogWatcher(object):
+    READBACK_SIZE = 128 * 1024
+
     def __init__(self, path):
         self.path = path
-        self.last_size = self.current_size() - 4096 if self.current_size() >= 4096 else 0
+        self.last_size = self.current_size() - self.READBACK_SIZE if self.current_size() >= self.READBACK_SIZE else 0
 
     def current_size(self):
         with open(self.path, 'r') as f:

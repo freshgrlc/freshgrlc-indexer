@@ -541,7 +541,7 @@ class DatabaseSession(object):
     def update_address_balance(self, address):
         print('Update  bal %s' % (address.address if address.address is not None else ' < RAW >'))
         utxos = self.session.query(TransactionOutput).filter(TransactionOutput.address_id == address.id, TransactionOutput.spentby_id == None).count()
-        if utxos > 2000:
+        if utxos > 5000:
             self.session.execute('UPDATE `address` SET `balance_dirty` = \'2\', `balance` = \'-1.0\' WHERE `address`.`id` = :address_id;', {
                 'address_id': address.id
             })

@@ -420,6 +420,13 @@ class DatabaseSession(object):
             'tx_id': tx_id
         })
 
+        self.session.execute('UPDATE `address` JOIN `txout` ON `txout`.`address` = `address`.`id` SET `address`.`balance_dirty` = \'1\' WHERE `txout`.`transaction` = :tx_id;', {
+            'tx_id': tx_id
+        })
+        self.session.execute('UPDATE `address` JOIN `txout` ON `txout`.`address` = `address`.`id` JOIN `txin` ON `txin`.`input` = `txout`.`id` SET `address`.`balance_dirty` = \'1\' WHERE `txin`.`transaction` = :tx_id;', {
+            'tx_id': tx_id
+        })
+
     def add_coinbase_data(self, block, txid, signature, outputs):
         coinbaseinfo = CoinbaseInfo()
         coinbaseinfo.block_id = block.id
@@ -528,6 +535,15 @@ class DatabaseSession(object):
 
         return db_address
 
+    def next_dirty_address(self):
+        return self.session.query(Address).filter(Address.balance_dirty == 1).first()
+
+    def update_address_balance(self, address):
+        self.session.execute('UPDATE `address` SET `balance_dirty` = 0, `balance` = (SELECT * FROM (SELECT SUM(`txout`.`amount`) FROM `txout` LEFT JOIN `address` ON `address`.`id` = `txout`.`address` WHERE `address`.`id` = :address_id AND `txout`.`spentby` IS NULL GROUP BY `address`.`id`, `txout`.`spentby` UNION SELECT 0.0 LIMIT 1) AS `_balance`) WHERE `address`.`id` = :address_id;', {
+            'address_id': address.id
+        })
+        print('Update addr %s' % (address.address if address.address is not None else '<raw>'))
+        self.session.commit()
 
 class DatabaseIO(DatabaseSession):
     def __init__(self, url, utxo_cache=False, debug=False):

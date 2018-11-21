@@ -27,9 +27,12 @@ CREATE TABLE `address` (
   `type` tinyint(4) NOT NULL,
   `address` varchar(64) DEFAULT NULL,
   `raw` varchar(256) DEFAULT NULL,
+  `balance` decimal(16,8),
+  `balance_dirty` tinyint(4) NOT NULL DEFAULT 1,
   PRIMARY KEY (`id`),
   UNIQUE KEY `address` (`address`),
-  KEY `addresstype` (`type`,`address`)
+  KEY `addresstype` (`type`,`address`),
+  KEY `balance` (`balance`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 

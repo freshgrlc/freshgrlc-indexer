@@ -98,12 +98,16 @@ class Context(Configuration):
     def sync_blocks(self):
         ancestor_height, indexer_height, chain_height = self.find_common_ancestor()
 
-        if ancestor_height != chain_height:
-            if ancestor_height < indexer_height:
-                self.db.orphan_blocks(ancestor_height + 1)
+        if ancestor_height == chain_height:
+            return False
 
-            for height in range(ancestor_height + 1, chain_height + 1):
-                self.import_blockheight(height)
+        if ancestor_height < indexer_height:
+            self.db.orphan_blocks(ancestor_height + 1)
+
+        for height in range(ancestor_height + 1, chain_height + 1):
+            self.import_blockheight(height)
+
+        return True
 
     def import_blockheight(self, height):
         self.update_hash_cache()
@@ -113,13 +117,22 @@ class Context(Configuration):
 
     def query_mempool(self):
         new_txs = list(filter(lambda tx: tx not in self.mempoolcache, self.daemon.getrawmempool()))
-        if len(new_txs) > 0:
-            self.update_hash_cache()
-            for txid in new_txs:
-                if self.db.transaction_internal_id(txid) is None:
-                    txinfo = self.get_transaction_with_metadata(txid)
-                    self.db.import_transaction(txinfo=txinfo[0], tx_runtime_metadata=txinfo[1])
-                self.mempoolcache[txid] = True
+        if len(new_txs) == 0:
+            return False
+        self.update_hash_cache()
+        for txid in new_txs:
+            if self.db.transaction_internal_id(txid) is None:
+                txinfo = self.get_transaction_with_metadata(txid)
+                self.db.import_transaction(txinfo=txinfo[0], tx_runtime_metadata=txinfo[1])
+            self.mempoolcache[txid] = True
+        return True
+
+    def update_single_balance(self):
+        dirty_address_id = self.db.next_dirty_address()
+        if dirty_address_id is None:
+            return False
+        self.db.update_address_balance(dirty_address_id)
+        return True
 
     def init_log_watcher(self):
         self.logwatcher = LogWatcher(self.NODE_LOGFILE)
@@ -144,9 +157,8 @@ def run():
                     c.sync_blocks()
                     print('\nSwitching to live tracking of mempool and chaintip.\n')
                     while True:
-                        sleep(1)
-                        c.query_mempool()
-                        c.sync_blocks()
+                        if not (c.query_mempool() or c.sync_blocks() or c.update_single_balance()):
+                            sleep(1)
 
                 except KeyboardInterrupt:
                     return

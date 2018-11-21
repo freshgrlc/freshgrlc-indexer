@@ -540,9 +540,15 @@ class DatabaseSession(object):
 
     def update_address_balance(self, address):
         print('Update  bal %s' % (address.address if address.address is not None else ' < RAW >'))
-        self.session.execute('UPDATE `address` SET `balance_dirty` = 0, `balance` = (SELECT * FROM (SELECT SUM(`txout`.`amount`) FROM `txout` LEFT JOIN `address` ON `address`.`id` = `txout`.`address` WHERE `address`.`id` = :address_id AND `txout`.`spentby` IS NULL GROUP BY `address`.`id`, `txout`.`spentby` UNION SELECT 0.0 LIMIT 1) AS `_balance`) WHERE `address`.`id` = :address_id;', {
-            'address_id': address.id
-        })
+        utxos = self.session.query(TransactionOutput).filter(TransactionOutput.address_id == address.id, TransactionOutput.spentby_id == None).count()
+        if utxos > 2000:
+            self.session.execute('UPDATE `address` SET `balance_dirty` = \'2\', `balance` = \'-1.0\' WHERE `address`.`id` = :address_id;', {
+                'address_id': address.id
+            })
+        else:
+            self.session.execute('UPDATE `address` SET `balance_dirty` = \'0\', `balance` = (SELECT SUM(`txout`.`amount`) FROM `txout` WHERE `txout`.`address` = :address_id AND `txout`.`spentby` IS NULL GROUP BY `address`.`id`, `txout`.`spentby` UNION SELECT \'0.0\' LIMIT 1) WHERE `address`.`id` = :address_id;', {
+                'address_id': address.id
+            })
         self.session.commit()
 
 class DatabaseIO(DatabaseSession):

@@ -239,6 +239,7 @@ CREATE TABLE `txout` (
   UNIQUE KEY `txout` (`transaction`,`index`),
   UNIQUE KEY `spentby` (`spentby`),
   KEY `address` (`address`),
+  KEY `address_utxo` (`address` ASC, `spentby` ASC),
   CONSTRAINT `fk_txout_address` FOREIGN KEY (`address`) REFERENCES `address` (`id`),
   CONSTRAINT `fk_txout_spentby` FOREIGN KEY (`spentby`) REFERENCES `txin` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_txout_transaction` FOREIGN KEY (`transaction`) REFERENCES `transaction` (`id`) ON DELETE CASCADE

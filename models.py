@@ -106,7 +106,7 @@ class Address(Base):
     address = Column(String(64), unique=True)
     raw = Column(String(256))
     balance = Column(Integer)
-    balance_dirty = Column(Integer)
+    balance_dirty = Column(Integer, default=1)
 
 
 class Block(Base):

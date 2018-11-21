@@ -539,10 +539,10 @@ class DatabaseSession(object):
         return self.session.query(Address).filter(Address.balance_dirty == 1).first()
 
     def update_address_balance(self, address):
+        print('Update addr %s' % (address.address if address.address is not None else '<raw>'))
         self.session.execute('UPDATE `address` SET `balance_dirty` = 0, `balance` = (SELECT * FROM (SELECT SUM(`txout`.`amount`) FROM `txout` LEFT JOIN `address` ON `address`.`id` = `txout`.`address` WHERE `address`.`id` = :address_id AND `txout`.`spentby` IS NULL GROUP BY `address`.`id`, `txout`.`spentby` UNION SELECT 0.0 LIMIT 1) AS `_balance`) WHERE `address`.`id` = :address_id;', {
             'address_id': address.id
         })
-        print('Update addr %s' % (address.address if address.address is not None else '<raw>'))
         self.session.commit()
 
 class DatabaseIO(DatabaseSession):

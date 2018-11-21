@@ -32,7 +32,8 @@ CREATE TABLE `address` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `address` (`address`),
   KEY `addresstype` (`type`,`address`),
-  KEY `balance` (`balance`)
+  KEY `balance` (`balance`),
+  KEY `balance_dirty` (`balance_dirty`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 

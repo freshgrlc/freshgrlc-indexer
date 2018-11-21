@@ -545,6 +545,7 @@ class DatabaseSession(object):
             self.session.execute('UPDATE `address` SET `balance_dirty` = \'2\', `balance` = \'-1.0\' WHERE `address`.`id` = :address_id;', {
                 'address_id': address.id
             })
+            print('Skipped bal %s (%d utxos)' % (address.address if address.address is not None else ' < RAW >', utxos))
         else:
             self.session.execute('UPDATE `address` SET `balance_dirty` = \'0\', `balance` = (SELECT SUM(`txout`.`amount`) FROM `txout` WHERE `txout`.`address` = :address_id AND `txout`.`spentby` IS NULL GROUP BY `address`.`id`, `txout`.`spentby` UNION SELECT \'0.0\' LIMIT 1) WHERE `address`.`id` = :address_id;', {
                 'address_id': address.id

@@ -5,6 +5,7 @@ from cachetools import LFUCache, RRCache
 from sqlalchemy import create_engine, tuple_, or_, func as sqlfunc
 from sqlalchemy.orm import sessionmaker
 from sys import version_info
+from time import time
 
 from models import *
 
@@ -535,26 +536,56 @@ class DatabaseSession(object):
 
         return db_address
 
-    def next_dirty_address(self):
-        return self.session.query(Address).filter(Address.balance_dirty == 1).first()
+    def next_dirty_address(self, check_for_id=1, random_address=False):
+        return self.session.query(Address).filter(Address.balance_dirty == check_for_id).order_by(Address.id if not random_address else sqlfunc.rand()).first()
+
+    def get_address_balance(self, address):
+        return self.session.execute('SELECT SUM(`txout`.`amount`) FROM `txout` WHERE `txout`.`address` = :address_id AND `txout`.`spentby` IS NULL GROUP BY `txout`.`address`, `txout`.`spentby` UNION SELECT \'0.0\' LIMIT 1;', {
+            'address_id': address.id
+        }).first()[0]
 
     def update_address_balance(self, address):
         print('Update  bal %s' % (address.address if address.address is not None else ' < RAW >'))
         utxos = self.session.query(TransactionOutput).filter(TransactionOutput.address_id == address.id, TransactionOutput.spentby_id == None).count()
         if utxos > 5000:
-            self.session.execute('UPDATE `address` SET `balance_dirty` = \'2\', `balance` = \'-1.0\' WHERE `address`.`id` = :address_id;', {
+            self.session.execute('UPDATE `address` SET `balance_dirty` = \'2\' WHERE `address`.`id` = :address_id;', {
                 'address_id': address.id
             })
             print('Skipped bal %s (%d utxos)' % (address.address if address.address is not None else ' < RAW >', utxos))
         else:
-            self.session.execute('UPDATE `address` SET `balance_dirty` = \'0\', `balance` = (SELECT SUM(`txout`.`amount`) FROM `txout` WHERE `txout`.`address` = :address_id AND `txout`.`spentby` IS NULL GROUP BY `address`.`id`, `txout`.`spentby` UNION SELECT \'0.0\' LIMIT 1) WHERE `address`.`id` = :address_id;', {
+            self.session.execute('UPDATE `address` SET `balance_dirty` = \'0\', `balance` = (SELECT SUM(`txout`.`amount`) FROM `txout` WHERE `txout`.`address` = :address_id AND `txout`.`spentby` IS NULL GROUP BY `txout`.`address`, `txout`.`spentby` UNION SELECT \'0.0\' LIMIT 1) WHERE `address`.`id` = :address_id;', {
                 'address_id': address.id
             })
         self.session.commit()
 
+    def update_address_balance_slow(self, address):
+        print('Update  bal %s' % (address.address if address.address is not None else ' < RAW >'))
+        start_time = time()
+
+        address.balance_dirty = 3
+        self.session.commit()
+        self.session.flush()
+
+        balance = self.get_address_balance(address)
+        self.session.flush()
+
+        if address.balance_dirty == 3:
+            address.balance_dirty = 0
+            address.balance = balance
+            print('Updated bal %s (%s, in %d secs)' % (address.address if address.address is not None else ' < RAW >', str(balance), time() - start_time))
+            self.session.commit()
+            self.session.flush()
+        else:
+            print('Abort   bal %s' % (address.address if address.address is not None else ' < RAW >'))
+
+    def reset_slow_address_balance_updates(self):
+        self.session.execute('UPDATE `address` SET `balance_dirty` = \'2\' WHERE `balance_dirty` = \'3\';');
+        self.session.commit()
+
+
 class DatabaseIO(DatabaseSession):
-    def __init__(self, url, utxo_cache=False, debug=False):
-        self.sessionmaker = sessionmaker(bind=create_engine(url, encoding='utf8', echo=debug))
+    def __init__(self, url, timeout=30, utxo_cache=False, debug=False):
+        self.sessionmaker = sessionmaker(bind=create_engine(url, connect_args={'connect_timeout': timeout}, encoding='utf8', echo=debug))
 
         self.address_cache = LFUCache(maxsize=16384)
         self.txid_cache = RRCache(maxsize=131072)

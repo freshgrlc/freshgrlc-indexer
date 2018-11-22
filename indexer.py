@@ -5,7 +5,7 @@ from bitcoinrpc import authproxy
 from cachetools import TTLCache
 from datetime import datetime
 from time import sleep
-from sys import version_info
+from sys import version_info, argv
 
 from coindaemon import Daemon
 from database import DatabaseIO
@@ -59,9 +59,9 @@ class LogWatcher(object):
 
 
 class Context(Configuration):
-    def __init__(self):
+    def __init__(self, timeout=30):
         self.daemon = Daemon(self.DAEMON_URL)
-        self.db = DatabaseIO(self.DATABASE_URL, utxo_cache=self.UTXO_CACHE, debug=self.DEBUG_SQL)
+        self.db = DatabaseIO(self.DATABASE_URL, timeout=timeout, utxo_cache=self.UTXO_CACHE, debug=self.DEBUG_SQL)
         self.hashcache = TTLCache(ttl=20, maxsize=256)
         self.logwatcher = None
         self.mempoolcache = TTLCache(ttl=600, maxsize=4096)
@@ -128,10 +128,17 @@ class Context(Configuration):
         return True
 
     def update_single_balance(self):
-        dirty_address_id = self.db.next_dirty_address()
-        if dirty_address_id is None:
+        dirty_address = self.db.next_dirty_address()
+        if dirty_address is None:
             return False
-        self.db.update_address_balance(dirty_address_id)
+        self.db.update_address_balance(dirty_address)
+        return True
+
+    def update_single_balance_background(self):
+        dirty_address = self.db.next_dirty_address(check_for_id=2, random_address=True)
+        if dirty_address is None:
+            return False
+        self.db.update_address_balance_slow(dirty_address)
         return True
 
     def init_log_watcher(self):
@@ -147,19 +154,27 @@ class Context(Configuration):
         return self.daemon.load_transaction(txid), None if txid not in self.hashcache else self.hashcache[txid]
 
 
-def run():
+def indexer(context):
+    context.init_log_watcher()
+    print('\nPerforming initial sync...\n')
+    context.sync_blocks()
+    print('\nSwitching to live tracking of mempool and chaintip.\n')
+    while True:
+        if not (context.query_mempool() or context.sync_blocks() or context.update_single_balance()):
+            sleep(1)
+
+def background_task(context):
+    context.db.reset_slow_address_balance_updates()
+    while True:
+        if not context.update_single_balance_background():
+            sleep(10)
+
+def loop(func, timeout=30):
     while True:
         try:
-            with Context() as c:
+            with Context(timeout) as c:
                 try:
-                    c.init_log_watcher()
-                    print('\nPerforming initial sync...\n')
-                    c.sync_blocks()
-                    print('\nSwitching to live tracking of mempool and chaintip.\n')
-                    while True:
-                        if not (c.query_mempool() or c.sync_blocks() or c.update_single_balance()):
-                            sleep(1)
-
+                    func(c)
                 except KeyboardInterrupt:
                     return
         except (socket.timeout, socket.error, httplib.BadStatusLine, authproxy.JSONRPCException):
@@ -169,4 +184,7 @@ def run():
 
 
 if __name__ == '__main__':
-    run()
+    if not '-B' in argv and not '--background-job' in argv:
+        loop(indexer)
+    else:
+        loop(background_task, 300)

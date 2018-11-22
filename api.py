@@ -136,3 +136,13 @@ def poolstats():
     with db.new_session() as session:
         with QueryDataPostProcessor() as pp:
             return pp.process_raw(session.pool_stats(since=since)).json()
+
+
+@webapp.route('/richlist/')
+@cross_origin()
+def richlist():
+    limit = request.args.get('limit')
+    limit = int(limit) if limit is not None else 100
+    with db.new_session() as session:
+        with QueryDataPostProcessor() as pp:
+            return pp.process_raw(session.richlist(limit=limit)).json()

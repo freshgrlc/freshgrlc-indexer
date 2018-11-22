@@ -115,6 +115,9 @@ class DatabaseSession(object):
         ).all()[0]
         return dict(zip(('blocks', 'transactions', 'transactedvalue'), (block_stats[0], transaction_stats[0], transaction_stats[1])))
 
+    def richlist(self, limit):
+        return [ { 'address': v[0], 'balance': v[1] } for v in self.session.query(Address.address, Address.balance).order_by(Address.balance.desc()).limit(limit).all() ]
+
     def mempool(self):
         return self.session.query(Transaction).filter(Transaction.confirmation_id == None).filter(Transaction.coinbaseinfo == None).order_by(Transaction.id.desc()).all()
 

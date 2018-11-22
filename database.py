@@ -118,6 +118,9 @@ class DatabaseSession(object):
     def richlist(self, limit):
         return [ { 'address': v[0], 'balance': v[1] } for v in self.session.query(Address.address, Address.balance).order_by(Address.balance.desc()).limit(limit).all() ]
 
+    def total_coins(self):
+        return { 'total': self.session.query(sqlfunc.sum(Address.balance)).first()[0] }
+
     def mempool(self):
         return self.session.query(Transaction).filter(Transaction.confirmation_id == None).filter(Transaction.coinbaseinfo == None).order_by(Transaction.id.desc()).all()
 
@@ -544,7 +547,7 @@ class DatabaseSession(object):
         return self.session.query(Address).filter(Address.balance_dirty == check_for_id).order_by(Address.id if not random_address else sqlfunc.rand()).first()
 
     def get_address_balance(self, address):
-        return self.session.execute('SELECT SUM(`txout`.`amount`) FROM `txout` WHERE `txout`.`address` = :address_id AND `txout`.`spentby` IS NULL GROUP BY `txout`.`address`, `txout`.`spentby` UNION SELECT \'0.0\' LIMIT 1;', {
+        return self.session.execute('SELECT SUM(`txout`.`amount`) FROM `txout` JOIN `transaction` ON `txout`.`transaction` = `transaction`.`id` WHERE `txout`.`address` = :address_id AND `txout`.`spentby` IS NULL AND `transaction`.`confirmation` IS NOT NULL UNION SELECT \'0.0\' LIMIT 1;', {
             'address_id': address.id
         }).first()[0]
 
@@ -557,7 +560,7 @@ class DatabaseSession(object):
             })
             print('Skipped bal %s (%d utxos)' % (address.address if address.address is not None else ' < RAW >', utxos))
         else:
-            self.session.execute('UPDATE `address` SET `balance_dirty` = \'0\', `balance` = (SELECT SUM(`txout`.`amount`) FROM `txout` WHERE `txout`.`address` = :address_id AND `txout`.`spentby` IS NULL GROUP BY `txout`.`address`, `txout`.`spentby` UNION SELECT \'0.0\' LIMIT 1) WHERE `address`.`id` = :address_id;', {
+            self.session.execute('UPDATE `address` SET `balance_dirty` = \'0\', `balance` = (SELECT SUM(`txout`.`amount`) FROM `txout` JOIN `transaction` ON `txout`.`transaction` = `transaction`.`id` WHERE `txout`.`address` = :address_id AND `txout`.`spentby` IS NULL AND `transaction`.`confirmation` IS NOT NULL UNION SELECT \'0.0\' LIMIT 1) WHERE `address`.`id` = :address_id;', {
                 'address_id': address.id
             })
         self.session.commit()

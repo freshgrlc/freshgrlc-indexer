@@ -537,6 +537,7 @@ class DatabaseSession(object):
         return db_address
 
     def next_dirty_address(self, check_for_id=1, random_address=False):
+        self.session.flush()
         return self.session.query(Address).filter(Address.balance_dirty == check_for_id).order_by(Address.id if not random_address else sqlfunc.rand()).first()
 
     def get_address_balance(self, address):

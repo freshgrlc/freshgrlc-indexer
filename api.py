@@ -146,3 +146,11 @@ def richlist():
     with db.new_session() as session:
         with QueryDataPostProcessor() as pp:
             return pp.process_raw(session.richlist(limit=limit)).json()
+
+
+@webapp.route('/coins/')
+@cross_origin()
+def total_coins():
+    with db.new_session() as session:
+        with QueryDataPostProcessor() as pp:
+            return pp.process_raw(session.total_coins()).json()

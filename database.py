@@ -537,7 +537,7 @@ class DatabaseSession(object):
         return db_address
 
     def next_dirty_address(self, check_for_id=1, random_address=False):
-        self.session.expire()
+        self.session.rollback()
         return self.session.query(Address).filter(Address.balance_dirty == check_for_id).order_by(Address.id if not random_address else sqlfunc.rand()).first()
 
     def get_address_balance(self, address):
@@ -567,7 +567,7 @@ class DatabaseSession(object):
         self.session.commit()
 
         balance = self.get_address_balance(address)
-        self.session.expire()
+        self.session.expire(address)
 
         if address.balance_dirty == 3:
             address.balance_dirty = 0

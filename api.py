@@ -70,7 +70,13 @@ def address_mutations(address):
     with db.new_session() as session:
         with QueryDataPostProcessor() as pp:
             pp.pagination()
-            return pp.process_raw(session.address_mutations(address, confirmed=param_true('confirmed'), start=pp.start, limit=pp.limit)).json()
+
+            mutations = session.address_mutations(address, confirmed=param_true('confirmed'), start=pp.start, limit=pp.limit)
+            for mutation in mutations:
+                mutation['transaction'] = {'txid': info['txid'], 'href': QueryDataPostProcessor.API_ENDPOINT + '/transactions/' + mutation['txid'] + '/'}
+                del mutation['txid']
+
+            return pp.process_raw(mutations).json()
 
 
 @webapp.route('/blocks/')

@@ -141,6 +141,13 @@ class Context(Configuration):
         self.db.update_address_balance_slow(dirty_address)
         return True
 
+    def add_single_tx_mutations(self):
+        next_tx = self.db.next_tx_without_mutations_info()
+        if next_tx is None:
+            return False
+        self.db.add_tx_mutations_info(next_tx)
+        return True
+
     def init_log_watcher(self):
         self.logwatcher = LogWatcher(self.NODE_LOGFILE)
 
@@ -160,7 +167,8 @@ def indexer(context):
     context.sync_blocks()
     print('\nSwitching to live tracking of mempool and chaintip.\n')
     while True:
-        if not (context.query_mempool() or context.sync_blocks() or context.update_single_balance()):
+        #if not (context.query_mempool() or context.sync_blocks() or context.add_single_tx_mutations() or context.update_single_balance()):
+        if not (0 or context.add_single_tx_mutations()):
             sleep(1)
 
 def background_task(context):

@@ -1,4 +1,4 @@
--- MySQL dump 10.16  Distrib 10.1.34-MariaDB, for Linux (x86_64)
+-- MySQL dump 10.16  Distrib 10.1.35-MariaDB, for Linux (x86_64)
 --
 -- Host: localhost    Database: blockchain
 -- ------------------------------------------------------
@@ -27,8 +27,8 @@ CREATE TABLE `address` (
   `type` tinyint(4) NOT NULL,
   `address` varchar(64) DEFAULT NULL,
   `raw` varchar(256) DEFAULT NULL,
-  `balance` decimal(16,8),
-  `balance_dirty` tinyint(4) NOT NULL DEFAULT 1,
+  `balance` decimal(16,8) DEFAULT NULL,
+  `balance_dirty` tinyint(4) NOT NULL DEFAULT '1',
   PRIMARY KEY (`id`),
   UNIQUE KEY `address` (`address`),
   KEY `addresstype` (`type`,`address`),
@@ -103,6 +103,26 @@ CREATE TABLE `coinbase` (
   CONSTRAINT `fk_coinbase_mainoutput` FOREIGN KEY (`mainoutput`) REFERENCES `txout` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_coinbase_transaction` FOREIGN KEY (`transaction`) REFERENCES `transaction` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `mutation`
+--
+
+DROP TABLE IF EXISTS `mutation`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `mutation` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `transaction` bigint(20) NOT NULL,
+  `address` int(11) NOT NULL,
+  `amount` decimal(16,8) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `fk_mutations_transaction_idx` (`transaction`),
+  KEY `fk_mutations_address_idx` (`address`),
+  CONSTRAINT `fk_mutations_address` FOREIGN KEY (`address`) REFERENCES `address` (`id`),
+  CONSTRAINT `fk_mutations_transaction` FOREIGN KEY (`transaction`) REFERENCES `transaction` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -240,13 +260,12 @@ CREATE TABLE `txout` (
   UNIQUE KEY `txout` (`transaction`,`index`),
   UNIQUE KEY `spentby` (`spentby`),
   KEY `address` (`address`),
-  KEY `address_utxo` (`address` ASC, `spentby` ASC),
+  KEY `address_utxo` (`address`,`spentby`),
   CONSTRAINT `fk_txout_address` FOREIGN KEY (`address`) REFERENCES `address` (`id`),
   CONSTRAINT `fk_txout_spentby` FOREIGN KEY (`spentby`) REFERENCES `txin` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_txout_transaction` FOREIGN KEY (`transaction`) REFERENCES `transaction` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
-
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
 /*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
@@ -257,4 +276,4 @@ CREATE TABLE `txout` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2018-08-10  0:02:54
+-- Dump completed on 2018-11-24 23:19:21

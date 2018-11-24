@@ -108,6 +108,8 @@ class Address(Base):
     balance = Column(Integer)
     balance_dirty = Column(Integer, default=1)
 
+    mutations = relationship('Mutation', back_populates='address')
+
 
 class Block(Base):
     __tablename__ = 'block'
@@ -158,6 +160,18 @@ class CoinbaseInfo(Base):
     block = relationship('Block', back_populates='coinbaseinfo')
     transaction = relationship('Transaction', back_populates='coinbaseinfo')
     mainoutput = relationship('TransactionOutput')
+
+
+class Mutation(Base):
+    __tablename__ = 'mutation'
+
+    id = Column(Integer, primary_key=True)
+    transaction_id = Column('transaction', BigInteger, ForeignKey('transaction.id'), unique=True)
+    address_id = Column('address', Integer, ForeignKey('address.id'), index=True)
+    amount = Column(Float(asdecimal=True))
+
+    transaction = relationship('Transaction')
+    address = relationship('Address', back_populates='mutations')
 
 
 class Pool(Base):

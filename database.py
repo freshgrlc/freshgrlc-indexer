@@ -542,6 +542,30 @@ class DatabaseSession(object):
 
         return db_address
 
+    def next_tx_without_mutations_info(self):
+        self.session.rollback()
+        return self.session.query(Transaction).join(Mutation, isouter=True).filter(Mutation.id == None).first()
+
+    def add_tx_mutations_info(self, tx):
+        self.session.execute('''
+            INSERT INTO `mutation` (`transaction`, `address`, `amount`)
+                SELECT :tx_id, `address`, SUM(`amount`) FROM (
+                    SELECT `txout`.`address`, `txout`.`amount` FROM `transaction`
+                        JOIN `txout` ON `transaction`.`id` = `txout`.`transaction`
+                        WHERE `transaction`.`id` = :tx_id
+                    UNION
+                    SELECT `txout`.`address`, '0' - `txout`.`amount` FROM `transaction`
+                        JOIN `txin` ON `transaction`.`id` = `txin`.`transaction`
+                        JOIN `txout` ON `txin`.`input` = `txout`.`id`
+                        WHERE `transaction`.`id` = :tx_id
+                ) temp
+                    GROUP BY address;
+            ''', {
+            'tx_id': tx.id
+        })
+        self.session.commit()
+        print('Added mts %s' % hexlify(tx.txid))
+
     def next_dirty_address(self, check_for_id=1, random_address=False):
         self.session.rollback()
         return self.session.query(Address).filter(Address.balance_dirty == check_for_id).order_by(Address.id if not random_address else sqlfunc.rand()).first()

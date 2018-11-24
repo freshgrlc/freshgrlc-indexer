@@ -10,7 +10,8 @@ from models import *
 
 
 def convert_date(date):
-    return int((date - datetime(1970, 1, 1)).total_seconds())
+    if date != None:
+        return int((date - datetime(1970, 1, 1)).total_seconds())
 
 
 def json_preprocess_value(k, v, cls):
@@ -136,7 +137,7 @@ class QueryDataPostProcessor(Configuration):
         pass
 
     def pagination(self, backwards_indexes=False, tipresolver=None):
-        start = int(request.args.get('start') or -self.DEFAULT_OBJECTS_PER_PAGE if backwards_indexes else 0)
+        start = int(request.args.get('start') or (-self.DEFAULT_OBJECTS_PER_PAGE if backwards_indexes else 0))
         limit = int(request.args.get('limit') or self.DEFAULT_OBJECTS_PER_PAGE)
 
         if limit <= 0 or limit > self.MAX_OBJECTS_PER_PAGE:
@@ -194,4 +195,6 @@ class QueryDataPostProcessor(Configuration):
     def process_raw(self, data):
         if type(data) == list:
             return self.ProcessedData([self._process_raw(obj) for obj in data])
-        return self.ProcessedData(self._process_raw(data))
+        elif type(data) == dict:
+            return self.ProcessedData(self._process_raw(data))
+        return self.ProcessedData(data)

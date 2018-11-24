@@ -18,6 +18,13 @@ db = DatabaseIO(Configuration.DATABASE_URL, debug=Configuration.DEBUG_SQL)
 stream = IndexerEventStream(db)
 
 
+def param_true(param_name, default=None):
+    param = request.args.get(param_name)
+    if param is None or param == '':
+        return default
+    return param.lower() == 'true' or param == '1'
+
+
 @webapp.route('/events/subscribe')
 @cross_origin()
 def subscribe():
@@ -29,6 +36,41 @@ def subscribe():
         mimetype='text/event-stream',
         headers=headers
     )
+
+
+@webapp.route('/address/<address>/')
+@cross_origin()
+def address_info(address):
+    with db.new_session() as session:
+        with QueryDataPostProcessor() as pp:
+            info = session.address_info(address)
+            info['mutations'] = {'href': QueryDataPostProcessor.API_ENDPOINT + '/address/' + address + '/mutations/'}
+            return pp.process_raw(info).json()
+
+
+@webapp.route('/address/<address>/balance/')
+@cross_origin()
+def address_balance(address):
+    with db.new_session() as session:
+        with QueryDataPostProcessor() as pp:
+            return pp.process_raw(session.address_balance(address)).json()
+
+
+@webapp.route('/address/<address>/pending/')
+@cross_origin()
+def address_pending(address):
+    with db.new_session() as session:
+        with QueryDataPostProcessor() as pp:
+            return pp.process_raw(session.address_pending_balance(address)).json()
+
+
+@webapp.route('/address/<address>/mutations/')
+@cross_origin()
+def address_mutations(address):
+    with db.new_session() as session:
+        with QueryDataPostProcessor() as pp:
+            pp.pagination()
+            return pp.process_raw(session.address_mutations(address, confirmed=param_true('confirmed'), start=pp.start, limit=pp.limit)).json()
 
 
 @webapp.route('/blocks/')

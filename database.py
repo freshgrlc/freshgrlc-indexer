@@ -8,6 +8,7 @@ from sys import version_info
 from time import time
 
 from models import *
+from postprocessor import convert_date
 
 
 INTEGER_TYPES = [int] if version_info[0] > 2 else [int, long]
@@ -50,6 +51,35 @@ class DatabaseSession(object):
 
     def blocks(self, start_height, limit):
         return self.session.query(Block).filter(Block.height >= start_height).order_by(Block.height).limit(limit).all()
+
+    def address_info(self, address, mutations_limit=100):
+        address = self.session.query(Address).filter(Address.address == address).first()
+        if address == None:
+            return None
+        return {
+            'balance': float(address.balance),
+            'pending': self.address_pending_balance(address.address)
+        }
+
+    def address_balance(self, address):
+        address = self.session.query(Address).filter(Address.address == address).first()
+        if address != None:
+            return float(address.balance)
+
+    def address_pending_balance(self, address):
+        return float(sum([ m['change'] for m in self.address_mutations(address, confirmed=False, limit=1000) ]))
+
+    def address_mutations(self, address, confirmed=None, start=0, limit=100):
+        if limit == 0:
+            return []
+        query = self.session.query(Transaction, Mutation).join(Mutation).join(Address).filter(Address.address == address)
+        if confirmed is not None:
+            if confirmed:
+                query = query.filter(Transaction.confirmation_id != None)
+            else:
+                query = query.join(CoinbaseInfo).filter(Transaction.confirmation_id == None).filter(CoinbaseInfo.transaction_id == None)
+        results = query.order_by(Transaction.id.desc()).offset(start).limit(limit).all()
+        return [{'time': convert_date(result[0].time), 'txid': hexlify(result[0].txid), 'change': float(result[1].amount), 'confirmed': result[0].confirmed} for result in results]
 
     def query_transactions(self, include_confirmation_info=False, confirmed_only=False):
         if not include_confirmation_info:

@@ -134,6 +134,8 @@ class Block(Base):
     def __getattribute__(self, name):
         if name == 'transactions':
             return [ref.transaction for ref in self.transactionreferences]
+        if name == 'time':
+            return self.firstseen if self.firstseen != None else self.timestamp
         return super(Block, self).__getattribute__(name)
 
 
@@ -256,6 +258,11 @@ class Transaction(Base):
             return self.confirmation.block if self.confirmation_id != None else None
         if name == 'block_id':
             return self.confirmation.block_id if self.confirmation_id != None else None
+        if name == 'time':
+            if self.firstseen != None:
+                return self.firstseen
+            block = self.block
+            return block.time if block != None else None
         return super(Transaction, self).__getattribute__(name)
 
 

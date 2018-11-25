@@ -77,7 +77,7 @@ class DatabaseSession(object):
             if confirmed:
                 query = query.filter(Transaction.confirmation_id != None)
             else:
-                query = query.join(CoinbaseInfo).filter(Transaction.confirmation_id == None).filter(CoinbaseInfo.transaction_id == None)
+                query = query.join(CoinbaseInfo, isouter=True).filter(Transaction.confirmation_id == None).filter(CoinbaseInfo.transaction_id == None)
         results = query.order_by(Transaction.id.desc()).offset(start).limit(limit).all()
         return [{'time': convert_date(result[0].time), 'txid': hexlify(result[0].txid), 'change': float(result[1].amount), 'confirmed': result[0].confirmed} for result in results]
 

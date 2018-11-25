@@ -65,6 +65,7 @@ class Context(Configuration):
         self.hashcache = TTLCache(ttl=20, maxsize=256)
         self.logwatcher = None
         self.mempoolcache = TTLCache(ttl=600, maxsize=4096)
+        self.last_mutations_txid = None
 
     def __enter__(self):
         return self
@@ -142,10 +143,11 @@ class Context(Configuration):
         return True
 
     def add_single_tx_mutations(self):
-        next_tx = self.db.next_tx_without_mutations_info()
+        next_tx = self.db.next_tx_without_mutations_info(last_id=self.last_mutations_txid)
         if next_tx is None:
             return False
         self.db.add_tx_mutations_info(next_tx)
+        self.last_mutations_txid = next_tx.id
         return True
 
     def init_log_watcher(self):

@@ -572,9 +572,15 @@ class DatabaseSession(object):
 
         return db_address
 
-    def next_tx_without_mutations_info(self):
+    def next_tx_without_mutations_info(self, last_id=None):
         self.session.rollback()
-        return self.session.query(Transaction).join(Mutation, isouter=True).filter(Mutation.id == None).first()
+
+        query = self.session.query(Transaction).join(Mutation, isouter=True).filter(Mutation.id == None)
+
+        if last_id is not None:
+            query = query.filter(Transaction.id > last_id)
+
+        return query.first()
 
     def add_tx_mutations_info(self, tx):
         self.session.execute('''

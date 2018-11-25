@@ -583,6 +583,7 @@ class DatabaseSession(object):
         return query.first()
 
     def add_tx_mutations_info(self, tx):
+        print('Import  mts %s' % hexlify(tx.txid))
         self.session.execute('''
             INSERT INTO `mutation` (`transaction`, `address`, `amount`)
                 SELECT :tx_id, `address`, SUM(`amount`) FROM (
@@ -600,7 +601,6 @@ class DatabaseSession(object):
             'tx_id': tx.id
         })
         self.session.commit()
-        print('Added mts %s' % hexlify(tx.txid))
 
     def next_dirty_address(self, check_for_id=1, random_address=False):
         self.session.rollback()

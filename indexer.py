@@ -169,8 +169,7 @@ def indexer(context):
     context.sync_blocks()
     print('\nSwitching to live tracking of mempool and chaintip.\n')
     while True:
-        #if not (context.query_mempool() or context.sync_blocks() or context.add_single_tx_mutations() or context.update_single_balance()):
-        if not (0 or context.add_single_tx_mutations()):
+        if not (context.query_mempool() or context.sync_blocks() or context.add_single_tx_mutations() or context.update_single_balance()):
             sleep(1)
 
 def background_task(context):

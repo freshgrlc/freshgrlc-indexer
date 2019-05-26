@@ -184,7 +184,7 @@ class DatabaseSession(object):
         block.size = blockinfo['size']
         block.timestamp = datetime.utcfromtimestamp(blockinfo['time'])
         block.difficulty = blockinfo['difficulty']
-        block.firstseen = blockinfo['relayedat'] if 'relayedat' in blockinfo else None
+        block.firstseen = datetime.utcfromtimestamp(txinfo['relayedat']) if 'relayedat' in txinfo and txinfo['relayedat'] is not None else None
         block.relayedby = blockinfo['relayedby'] if 'relayedby' in blockinfo else None
         block.miner_id = None
 
@@ -257,7 +257,7 @@ class DatabaseSession(object):
         tx.size = txinfo['size']
         tx.fee = -1.0
         tx.totalvalue = -1.0
-        tx.firstseen = txinfo['relayedat'] if 'relayedat' in txinfo else None
+        tx.firstseen = datetime.utcfromtimestamp(txinfo['relayedat']) if 'relayedat' in txinfo and txinfo['relayedat'] is not None else None
         tx.relayedby = txinfo['relayedby'] if 'relayedby' in txinfo else None
         tx.confirmation_id = None
 

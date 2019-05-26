@@ -70,7 +70,6 @@ class Context(Configuration):
         return True
 
     def import_blockheight(self, height):
-        self.update_hash_cache()
         blockhash = self.daemon.getblockhash(height)
         self.db.import_blockinfo(self.daemon.getblock(blockhash), tx_resolver=self.get_transaction)
 
@@ -78,7 +77,6 @@ class Context(Configuration):
         new_txs = list(filter(lambda tx: tx not in self.mempoolcache, self.daemon.getrawmempool()))
         if len(new_txs) == 0:
             return False
-        self.update_hash_cache()
         for txid in new_txs:
             if self.db.transaction_internal_id(txid) is None:
                 txinfo = self.get_transaction(txid)

@@ -5,6 +5,7 @@ from bitcoinrpc import authproxy
 from cachetools import TTLCache
 from datetime import datetime
 from time import sleep
+from traceback import print_exc
 from sys import version_info, argv
 
 from coindaemon import Daemon
@@ -134,7 +135,8 @@ def loop(func, timeout=30):
                 except KeyboardInterrupt:
                     return
         except (socket.timeout, socket.error, httplib.BadStatusLine, authproxy.JSONRPCException):
-            pass
+            print('Caught connection exception:')
+            print_exc()
         print('Connection lost. Reconnecting in 10 seconds...')
         sleep(10)
 

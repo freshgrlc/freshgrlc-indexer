@@ -112,7 +112,6 @@ class Context(Configuration):
 
 
 def indexer(context):
-    context.init_log_watcher()
     print('\nPerforming initial sync...\n')
     context.sync_blocks()
     print('\nSwitching to live tracking of mempool and chaintip.\n')

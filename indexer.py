@@ -17,53 +17,11 @@ else:
     import httplib
 
 
-class LogWatcher(object):
-    READBACK_SIZE = 128 * 1024
-
-    def __init__(self, path):
-        self.path = path
-        self.last_size = self.current_size() - self.READBACK_SIZE if self.current_size() >= self.READBACK_SIZE else 0
-
-    def current_size(self):
-        with open(self.path, 'r') as f:
-            f.seek(-1, 2)
-            return f.tell()
-
-    def has_new_data(self):
-        newsize = self.current_size()
-        if newsize < self.last_size - 1:    # Logfile rotation, no idea what's up with that -1, thankfully it does not hurt to have
-            self.last_size = 0
-        return newsize != self.last_size
-
-    def get_new_lines(self):
-        with open(self.path, 'r') as f:
-            f.seek(self.last_size, 0)
-            new_lines = f.read().split('\n')
-            self.last_size = f.tell()
-        return new_lines
-
-    def poll(self):
-        ret = {}
-        if self.has_new_data():
-            for line in self.get_new_lines():
-                parts = line.split(' ')
-                if len(parts) > 6 and parts[2] == 'New' and parts[3] in ('tx', 'block') and parts[5] == 'from':
-                    if not parts[4] in ret.keys():
-                        try:
-                            relaytime = datetime.strptime(' '.join(parts[0:2]), '%Y-%m-%d %H:%M:%S')
-                        except ValueError:
-                            continue
-                        relayip = parts[6].rsplit(':', 1)[0].lstrip('[').rstrip(']')
-                        ret[parts[4]] = {'relaytime': relaytime, 'relayip': relayip}
-        return ret
-
 
 class Context(Configuration):
     def __init__(self, timeout=30):
         self.daemon = Daemon(self.DAEMON_URL)
         self.db = DatabaseIO(self.DATABASE_URL, timeout=timeout, utxo_cache=self.UTXO_CACHE, debug=self.DEBUG_SQL)
-        self.hashcache = TTLCache(ttl=20, maxsize=256)
-        self.logwatcher = None
         self.mempoolcache = TTLCache(ttl=600, maxsize=4096)
         self.last_mutations_txid = None
 
@@ -113,8 +71,7 @@ class Context(Configuration):
     def import_blockheight(self, height):
         self.update_hash_cache()
         blockhash = self.daemon.getblockhash(height)
-        runtime_info = self.hashcache[blockhash] if blockhash in self.hashcache else None
-        self.db.import_blockinfo(self.daemon.getblock(blockhash), runtime_metadata=runtime_info, tx_resolver=self.get_transaction_with_metadata)
+        self.db.import_blockinfo(self.daemon.getblock(blockhash), tx_resolver=self.get_transaction)
 
     def query_mempool(self):
         new_txs = list(filter(lambda tx: tx not in self.mempoolcache, self.daemon.getrawmempool()))
@@ -123,8 +80,8 @@ class Context(Configuration):
         self.update_hash_cache()
         for txid in new_txs:
             if self.db.transaction_internal_id(txid) is None:
-                txinfo = self.get_transaction_with_metadata(txid)
-                self.db.import_transaction(txinfo=txinfo[0], tx_runtime_metadata=txinfo[1])
+                txinfo = self.get_transaction(txid)
+                self.db.import_transaction(txinfo=txinfo)
             self.mempoolcache[txid] = True
         return True
 
@@ -150,17 +107,8 @@ class Context(Configuration):
         self.last_mutations_txid = next_tx.id
         return True
 
-    def init_log_watcher(self):
-        self.logwatcher = LogWatcher(self.NODE_LOGFILE)
-
-    def update_hash_cache(self):
-        if self.logwatcher is not None:
-            for objhash, info in self.logwatcher.poll().items():
-                if objhash not in self.hashcache:
-                    self.hashcache[objhash] = info
-
-    def get_transaction_with_metadata(self, txid):
-        return self.daemon.load_transaction(txid), None if txid not in self.hashcache else self.hashcache[txid]
+    def get_transaction(self, txid):
+        return self.daemon.load_transaction(txid)
 
 
 def indexer(context):

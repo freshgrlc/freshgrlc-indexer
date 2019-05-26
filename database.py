@@ -154,18 +154,18 @@ class DatabaseSession(object):
     def mempool(self):
         return self.session.query(Transaction).filter(Transaction.confirmation_id == None).filter(Transaction.coinbaseinfo == None).order_by(Transaction.id.desc()).all()
 
-    def import_blockinfo(self, blockinfo, runtime_metadata=None, tx_resolver=None):
+    def import_blockinfo(self, blockinfo, tx_resolver=None):
         # Genesis block workaround
         if blockinfo['height'] == 0:
             blockinfo['tx'] = []
 
-        print('Adding  blk %s%s' % (blockinfo['hash'], '' if runtime_metadata is None else (' (via %s)' % runtime_metadata['relayip'])))
+        print('Adding  blk %s%s' % (blockinfo['hash'], (' (via %s)' % blockinfo['relayedby']) if 'relayedby' in blockinfo and blockinfo['relayedby'] is not None else ''))
 
         coinbase_signatures = {}
         for txid in blockinfo['tx']:
             if self.transaction_internal_id(txid) is None and tx_resolver is not None:
-                txinfo, tx_runtime_metadata = tx_resolver(txid)
-                self.import_transaction(txinfo, tx_runtime_metadata, coinbase_signatures=coinbase_signatures)
+                txinfo = tx_resolver(txid)
+                self.import_transaction(txinfo, coinbase_signatures=coinbase_signatures)
 
         blockhash = unhexlify(blockinfo['hash'])
         block = self.block(blockhash)
@@ -184,8 +184,8 @@ class DatabaseSession(object):
         block.size = blockinfo['size']
         block.timestamp = datetime.utcfromtimestamp(blockinfo['time'])
         block.difficulty = blockinfo['difficulty']
-        block.firstseen = runtime_metadata['relaytime'] if runtime_metadata is not None else None
-        block.relayedby = runtime_metadata['relayip'] if runtime_metadata is not None else None
+        block.firstseen = blockinfo['relayedat'] if 'relayedat' in blockinfo else None
+        block.relayedby = blockinfo['relayedby'] if 'relayedby' in blockinfo else None
         block.miner_id = None
 
         self.session.add(block)
@@ -198,7 +198,7 @@ class DatabaseSession(object):
             print('Adding  cb  %s' % coinbase_signatures.keys()[0])
             self.add_coinbase_data(block, coinbase_signatures.keys()[0], coinbase_signatures.values()[0][0], coinbase_signatures.values()[0][1])
 
-            if runtime_metadata is not None:
+            if block.relayedby != None:
                 tx = self.transaction(coinbase_signatures.keys()[0])
                 tx.firstseen = block.firstseen
                 tx.relayedby = block.relayedby
@@ -226,7 +226,7 @@ class DatabaseSession(object):
             block.height = None
             self.session.commit()
 
-    def import_transaction(self, txinfo, tx_runtime_metadata=None, coinbase_signatures=None):
+    def import_transaction(self, txinfo, coinbase_signatures=None):
         coinbase_inputs = list(filter(lambda txin: 'coinbase' in txin, txinfo['vin']))
         regular_inputs = list(filter(lambda txin: 'coinbase' not in txin, txinfo['vin']))
 
@@ -246,7 +246,7 @@ class DatabaseSession(object):
                 txinfo['txid'],
                 len(regular_inputs),
                 len(txinfo['vout']),
-                tx_runtime_metadata['relayip'] if tx_runtime_metadata is not None else 'unknown'
+                txinfo['relayedby'] if 'relayedby' in txinfo and txinfo['relayedby'] is not None else 'unknown'
             ))
         else:
             print('Adding  tx  %s (coinbase, %d outputs)' % (txinfo['txid'], len(txinfo['vout'])))
@@ -257,8 +257,8 @@ class DatabaseSession(object):
         tx.size = txinfo['size']
         tx.fee = -1.0
         tx.totalvalue = -1.0
-        tx.firstseen = tx_runtime_metadata['relaytime'] if tx_runtime_metadata is not None else None
-        tx.relayedby = tx_runtime_metadata['relayip'] if tx_runtime_metadata is not None else None
+        tx.firstseen = txinfo['relayedat'] if 'relayedat' in txinfo else None
+        tx.relayedby = txinfo['relayedby'] if 'relayedby' in txinfo else None
         tx.confirmation_id = None
 
         self.session.add(tx)
@@ -437,8 +437,8 @@ class DatabaseSession(object):
         tx_id = self.transaction_internal_id(txid)
 
         if tx_id is None and tx_resolver is not None:
-            txinfo, tx_runtime_metadata = tx_resolver(txid)
-            tx_id = self.import_transaction(txinfo, tx_runtime_metadata).id
+            txinfo = tx_resolver(txid)
+            tx_id = self.import_transaction(txinfo).id
 
         blockref = self.session.query(BlockTransaction).filter(BlockTransaction.block_id == internal_block_id).filter(BlockTransaction.transaction_id == tx_id).first()
         if blockref == None:

@@ -162,7 +162,7 @@ def transaction(txid):
 @webapp.route('/networkstats/')
 @cross_origin()
 def stats():
-    since = datetime.fromtimestamp(int(request.args.get('since')))
+    since = datetime.fromtimestamp(int(request.args.get('since') or 0))
     with db.new_session() as session:
         with QueryDataPostProcessor() as pp:
             data = pp.process_raw(session.network_stats(since=since)).data

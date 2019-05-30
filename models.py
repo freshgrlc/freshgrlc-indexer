@@ -109,6 +109,7 @@ class Address(Base):
     balance_dirty = Column(Integer, default=1)
 
     mutations = relationship('Mutation', back_populates='address')
+    pool = relationship('PoolAddress', back_populates='address', cascade='save-update, merge, delete')
 
 
 class Block(Base):
@@ -127,7 +128,7 @@ class Block(Base):
 
     miner = relationship('Pool')
     coinbaseinfo = relationship('CoinbaseInfo', back_populates='block')
-    transactionreferences = relationship('BlockTransaction', back_populates='block')
+    transactionreferences = relationship('BlockTransaction', back_populates='block', cascade='save-update, merge, delete')
 
     API_DATA_FIELDS = [hash, height, size, timestamp, difficulty, firstseen, relayedby]
     POSTPROCESS_RESOLVE_FOREIGN_KEYS = [miner, 'Block.transactions']
@@ -174,7 +175,7 @@ class Mutation(Base):
     address_id = Column('address', Integer, ForeignKey('address.id'), index=True)
     amount = Column(Float(asdecimal=True))
 
-    transaction = relationship('Transaction')
+    transaction = relationship('Transaction', back_populates='address_mutations')
     address = relationship('Address', back_populates='mutations')
 
 
@@ -189,8 +190,8 @@ class Pool(Base):
     graphcolor = Column(String(6))
 
     group = relationship('PoolGroup', back_populates='pools')
-    addresses = relationship('PoolAddress', back_populates='pool')
-    coinbasesignatures = relationship('PoolCoinbaseSignature', back_populates='pool')
+    addresses = relationship('PoolAddress', back_populates='pool', cascade='save-update, merge, delete')
+    coinbasesignatures = relationship('PoolCoinbaseSignature', back_populates='pool', cascade='save-update, merge, delete')
 
     API_DATA_FIELDS = [name, website, graphcolor]
     POSTPROCESS_RESOLVE_FOREIGN_KEYS = [group]
@@ -202,7 +203,7 @@ class PoolAddress(Base):
     address_id = Column('address', Integer, ForeignKey('address.id'), primary_key=True)
     pool_id = Column('pool', Integer, ForeignKey('pool.id'), index=True)
 
-    address = relationship('Address')
+    address = relationship('Address', back_populates='pool')
     pool = relationship('Pool', back_populates='addresses')
 
 
@@ -243,10 +244,11 @@ class Transaction(Base):
     confirmation_id = Column('confirmation', BigInteger, ForeignKey('blocktx.id'), unique=True)
 
     confirmation = relationship('BlockTransaction', foreign_keys=[confirmation_id])
-    blockreferences = relationship('BlockTransaction', back_populates='transaction', foreign_keys=[BlockTransaction.transaction_id])
+    blockreferences = relationship('BlockTransaction', back_populates='transaction', foreign_keys=[BlockTransaction.transaction_id], cascade='save-update, merge, delete')
     coinbaseinfo = relationship('CoinbaseInfo', back_populates='transaction')
-    inputs = relationship('TransactionInput', back_populates='transaction')
-    outputs = relationship('TransactionOutput', back_populates='transaction')
+    inputs = relationship('TransactionInput', back_populates='transaction', cascade='save-update, merge, delete')
+    outputs = relationship('TransactionOutput', back_populates='transaction', cascade='save-update, merge, delete')
+    address_mutations = relationship('Mutation', back_populates='transaction', cascade='save-update, merge, delete')
 
     API_DATA_FIELDS = [txid, size, fee, totalvalue, firstseen, 'Transaction.confirmed', 'Transaction.coinbase']
     POSTPROCESS_RESOLVE_FOREIGN_KEYS = ['Transaction.block']

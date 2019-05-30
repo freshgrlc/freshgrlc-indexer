@@ -280,8 +280,12 @@ class DatabaseSession(object):
 
         if block != None:
             for txref in self.session.query(BlockTransaction).filter(BlockTransaction.block_id == block.id).all():
-                txref.transaction.confirmation = None
-                for tx_input in txref.transaction.inputs:
+                tx = txref.transaction
+                tx.confirmation = None
+                for tx_output in tx.outputs:
+                    tx_output.address.balance_dirty = 1
+                for tx_input in tx.inputs:
+                    tx_input.input.address.balance_dirty = 1
                     tx_input.input.spentby_id = None
 
             block.height = None

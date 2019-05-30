@@ -15,8 +15,10 @@ def convert_date(date):
 
 
 def json_preprocess_value(k, v, cls):
-    if v == None or type(v) == dict:
-        return v
+    if v == None:
+        return None
+    if type(v) == dict:
+        return json_preprocess_dict(v)
 
     try:
         datatype = type(getattr(cls, k).type)
@@ -30,6 +32,10 @@ def json_preprocess_value(k, v, cls):
     if datatype == Float or datatype == Decimal:
         return float(v)
     return v
+
+
+def json_preprocess_dict(d):
+    return {k: json_preprocess_value(k, v, None) for k, v in d.items()}
 
 
 def substitute_contextinfo(template, context):
@@ -189,12 +195,9 @@ class QueryDataPostProcessor(Configuration):
             return self.ProcessedData([self._process(obj) for obj in data])
         return self.ProcessedData(self._process(data))
 
-    def _process_raw(self, data):
-        return {k: json_preprocess_value(k, v, None) for k, v in data.items()}
-
     def process_raw(self, data):
         if type(data) == list:
-            return self.ProcessedData([self._process_raw(obj) for obj in data])
+            return self.ProcessedData([json_preprocess_dict(obj) for obj in data])
         elif type(data) == dict:
-            return self.ProcessedData(self._process_raw(data))
+            return self.ProcessedData(json_preprocess_dict(data))
         return self.ProcessedData(data)

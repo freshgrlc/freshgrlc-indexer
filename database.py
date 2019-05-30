@@ -680,17 +680,26 @@ class DatabaseSession(object):
 
     def update_address_balance(self, address):
         print('Update  bal %s' % (address.address if address.address is not None else ' < RAW >'))
+        start_time = time()
+
         utxos = self.session.query(TransactionOutput).filter(TransactionOutput.address_id == address.id, TransactionOutput.spentby_id == None).count()
-        if utxos > 5000:
-            self.session.execute('UPDATE `address` SET `balance_dirty` = \'2\' WHERE `address`.`id` = :address_id;', {
-                'address_id': address.id
-            })
-            print('Skipped bal %s (%d utxos)' % (address.address if address.address is not None else ' < RAW >', utxos))
-        else:
+        skip = utxos > 5000
+
+        if not skip:
             self.session.execute('UPDATE `address` SET `balance_dirty` = \'0\', `balance` = (SELECT SUM(`txout`.`amount`) FROM `txout` JOIN `transaction` ON `txout`.`transaction` = `transaction`.`id` WHERE `txout`.`address` = :address_id AND `txout`.`spentby` IS NULL AND `transaction`.`confirmation` IS NOT NULL UNION SELECT \'0.0\' LIMIT 1) WHERE `address`.`id` = :address_id;', {
                 'address_id': address.id
             })
+        else:
+            self.session.execute('UPDATE `address` SET `balance_dirty` = \'2\' WHERE `address`.`id` = :address_id;', {
+                'address_id': address.id
+            })
+
         self.session.commit()
+
+        if not skip:
+            print('Updated bal %s (%3d msec, %d utxos)' % (address.address if address.address is not None else ' < RAW >', int((time() - start_time) * 1000), utxos))
+        else:
+            print('Skipped bal %s (%d utxos)' % (address.address if address.address is not None else ' < RAW >', utxos))
 
     def update_address_balance_slow(self, address):
         print('Update  bal %s' % (address.address if address.address is not None else ' < RAW >'))

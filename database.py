@@ -134,7 +134,8 @@ class DatabaseSession(object):
             sqlfunc.count(Block.id),
             sqlfunc.sum(Transaction.totalvalue)
         ).join(
-            BlockTransaction
+            BlockTransaction,
+            Block.id == BlockTransaction.block_id
         ).join(
             Transaction,
             Transaction.id == BlockTransaction.transaction_id

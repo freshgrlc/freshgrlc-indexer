@@ -4,7 +4,7 @@ from binascii import hexlify, unhexlify
 from bitcoinrpc import authproxy
 from cachetools import TTLCache
 from datetime import datetime
-from time import sleep
+from time import sleep, time
 from traceback import print_exc
 from sys import version_info, argv
 
@@ -190,6 +190,15 @@ class Context(Configuration):
         return self.daemon.load_transaction(txid)
 
 
+def do_until_timeout(operation, timeout):
+    if operation():
+        while time() < timeout:
+            if not operation():
+                break
+        return True
+    return False
+
+
 def indexer(context):
     print('\nChecking database state...\n')
     context.verify_state()
@@ -197,8 +206,18 @@ def indexer(context):
     context.sync_blocks(initial=True)
     print('\nSwitching to live tracking of mempool and chaintip.\n')
     while True:
-        if not (context.query_mempool() or context.sync_blocks() or context.update_single_balance() or context.migrate_old_data()):
-            sleep(1)
+        context.query_mempool()
+        if context.sync_blocks():
+            continue
+
+        timeout = time() + 3
+
+        if do_until_timeout(context.update_single_balance, timeout):
+            continue
+        if do_until_timeout(context.migrate_old_data, timeout):
+            continue
+        sleep(1)
+
 
 def background_task(context):
     context.db.reset_slow_address_balance_updates()

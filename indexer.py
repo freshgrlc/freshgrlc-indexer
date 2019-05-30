@@ -34,6 +34,11 @@ class Context(Configuration):
     def __exit__(self, exc_type, exc_value, traceback):
         self.db.flush()
 
+    def verify_state(self):
+        # Looks like we can end up in a state where we have blocks
+        # without coinbase info if we exit at the wrong point?
+        self.db.remove_blocks_without_coinbase()
+
     def find_common_ancestor(self):
         chaintip_height = self.daemon.get_current_height()
         indexer_tip = self.db.chaintip()
@@ -57,22 +62,57 @@ class Context(Configuration):
 
         return ancestor_height, indexer_tip.height, chaintip_height
 
-    def sync_blocks(self):
+    def sync_blocks(self, initial=False):
         ancestor_height, indexer_height, chain_height = self.find_common_ancestor()
 
-        if ancestor_height == chain_height:
+        if initial:
+            print('Block heights:')
+            print('  Network:     %7d' % chain_height)
+            print('  Indexer:     %7d' % indexer_height)
+            print('  Last common: %7d' % ancestor_height)
+            print('')
+
+        if ancestor_height == chain_height and not initial:
             return False
 
         if ancestor_height < indexer_height:
             self.db.orphan_blocks(ancestor_height + 1)
 
+        if initial and self.db.blockcount() != ancestor_height:
+            print('\nIndexer is missing %d blocks, doing full rescan...\n' % (ancestor_height - self.db.blockcount()))
+
+            for base in range(1, ancestor_height + 1, 1000):
+                if self.db.blockcount(range=(base, base + 1000)) != 1000:
+                    for height in range(base, base + 1000 if base + 1000 < ancestor_height + 1 else ancestor_height + 1):
+                        block = self.db.block(height)
+                        if block == None:
+                            self.import_blockheight(height)
+
         for height in range(ancestor_height + 1, chain_height + 1):
-            self.import_blockheight(height)
+            block = self.db.block(height)
+            if block == None:
+                self.import_blockheight(height)
+            elif initial and height % 1000 == 0:
+                print('Checked blk %s (height %d)' % (hexlify(block.hash), block.height))
 
         return True
 
     def import_blockheight(self, height):
         blockhash = self.daemon.getblockhash(height)
+        blockinfo = self.daemon.getblock(blockhash)
+        last_blockhash = blockinfo['previousblockhash']
+        next_blockhash = blockinfo['nextblockhash'] if 'nextblockhash' in blockinfo else None
+
+        if height > 1:
+            lastblock = self.db.block(height - 1)
+            if unhexlify(last_blockhash) != lastblock.hash:
+                raise Exception('Chain error: blocks %d and %d not chaining' % (height - 1, height))
+
+        nextblock = self.db.block(height + 1)
+        if nextblock != None:
+            if next_blockhash is None or unhexlify(next_blockhash) != nextblock.hash:
+                self.db.orphan_blocks(height + 1)
+
         self.db.import_blockinfo(self.daemon.getblock(blockhash), tx_resolver=self.get_transaction)
 
     def query_mempool(self):
@@ -80,9 +120,7 @@ class Context(Configuration):
         if len(new_txs) == 0:
             return False
         for txid in new_txs:
-            if self.db.transaction_internal_id(txid) is None:
-                txinfo = self.get_transaction(txid)
-                self.db.import_transaction(txinfo=txinfo)
+            self.db.check_need_import_transaction(txid, tx_resolver=self.get_transaction)
             self.mempoolcache[txid] = True
         return True
 
@@ -98,14 +136,6 @@ class Context(Configuration):
         if dirty_address is None:
             return False
         self.db.update_address_balance_slow(dirty_address)
-        return True
-
-    def add_single_tx_mutations(self):
-        next_tx = self.db.next_tx_without_mutations_info(last_id=self.last_mutations_txid)
-        if next_tx is None:
-            return False
-        self.db.add_tx_mutations_info(next_tx)
-        self.last_mutations_txid = next_tx.id
         return True
 
     def migrate_old_data(self):
@@ -161,11 +191,13 @@ class Context(Configuration):
 
 
 def indexer(context):
+    print('\nChecking database state...\n')
+    context.verify_state()
     print('\nPerforming initial sync...\n')
-    context.sync_blocks()
+    context.sync_blocks(initial=True)
     print('\nSwitching to live tracking of mempool and chaintip.\n')
     while True:
-        if not (context.query_mempool() or context.sync_blocks() or context.add_single_tx_mutations() or context.update_single_balance() or context.migrate_old_data()):
+        if not (context.query_mempool() or context.sync_blocks() or context.update_single_balance() or context.migrate_old_data()):
             sleep(1)
 
 def background_task(context):

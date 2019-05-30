@@ -168,11 +168,15 @@ def stats():
             data = pp.process_raw(session.network_stats(since=since)).data
             return pp.process_raw({
                 'blocks': {
-                    'amount':       data['blocks']
+                    'amount':       data['blocks'],
+                    'totalfees':    data['totalfees']
                 },
                 'transactions': {
                     'amount':       data['transactions'],
                     'totalvalue':   data['transactedvalue']
+                },
+                'coins': {
+                    'released':     data['coinsreleased']
                 }
             }).json()
 
@@ -201,4 +205,4 @@ def richlist():
 def total_coins():
     with db.new_session() as session:
         with QueryDataPostProcessor() as pp:
-            return pp.process_raw(session.total_coins()).json()
+            return pp.process_raw(session.total_coins_info()).json()

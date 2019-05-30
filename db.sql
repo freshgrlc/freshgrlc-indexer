@@ -49,6 +49,7 @@ CREATE TABLE `block` (
   `hash` binary(32) NOT NULL,
   `height` int(11) DEFAULT NULL,
   `size` int(11) NOT NULL,
+  `totalfee` decimal(16,8) NOT NULL,
   `timestamp` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `difficulty` decimal(8,3) NOT NULL,
   `firstseen` timestamp NULL DEFAULT NULL,
@@ -92,6 +93,7 @@ DROP TABLE IF EXISTS `coinbase`;
 CREATE TABLE `coinbase` (
   `block` int(11) NOT NULL,
   `transaction` bigint(20) NOT NULL,
+  `newcoins` decimal(16,8) NOT NULL,
   `raw` varbinary(256) NOT NULL,
   `signature` varchar(32) DEFAULT NULL,
   `mainoutput` bigint(20) DEFAULT NULL,

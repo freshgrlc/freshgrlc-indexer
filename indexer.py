@@ -1,6 +1,6 @@
 import socket
 
-from binascii import unhexlify
+from binascii import hexlify, unhexlify
 from bitcoinrpc import authproxy
 from cachetools import TTLCache
 from datetime import datetime
@@ -9,7 +9,7 @@ from traceback import print_exc
 from sys import version_info, argv
 
 from coindaemon import Daemon
-from database import DatabaseIO
+from database import DatabaseIO, Block, CoinbaseInfo
 from config import Configuration
 
 if version_info[0] > 2:
@@ -25,6 +25,8 @@ class Context(Configuration):
         self.db = DatabaseIO(self.DATABASE_URL, timeout=timeout, utxo_cache=self.UTXO_CACHE, debug=self.DEBUG_SQL)
         self.mempoolcache = TTLCache(ttl=600, maxsize=4096)
         self.last_mutations_txid = None
+        self.migration_type = 'init'
+        self.migration_last_id = None
 
     def __enter__(self):
         return self
@@ -106,6 +108,54 @@ class Context(Configuration):
         self.last_mutations_txid = next_tx.id
         return True
 
+    def migrate_old_data(self):
+        if self.migration_type == 'init':
+            self.migration_type = 'block_totalfee'
+            self.migration_last_id = 0
+
+        if self.migration_type == 'block_totalfee':
+            if self.migration_update_block_totalfee():
+                return True
+            self.migration_type = 'coinbase_newcoins'
+            self.migration_last_id = 0
+
+        if self.migration_type == 'coinbase_newcoins':
+            if self.migration_update_coinbase_newcoins():
+                return True
+            self.migration_type = None
+            self.migration_last_id = 0
+        return False
+
+    def migration_update_block_totalfee(self):
+        self.db.session.rollback()
+        block = self.db.session.query(Block).filter(Block.totalfee == None).filter(Block.id > self.migration_last_id).first()
+
+        if block == None:
+            return False
+
+        self.migration_last_id = block.id
+
+        print('Migrate blk %s' % hexlify(block.hash))
+        block.totalfee = sum([ tx.fee for tx in block.transactions ])
+        self.db.session.add(block)
+        self.db.session.commit()
+        return True
+
+    def migration_update_coinbase_newcoins(self):
+        self.db.session.rollback()
+        cb = self.db.session.query(CoinbaseInfo).filter(CoinbaseInfo.newcoins == None).filter(CoinbaseInfo.block_id > self.migration_last_id).first()
+
+        if cb == None:
+            return False
+
+        self.migration_last_id = cb.block_id
+
+        print('Migrate cb  %s' % hexlify(cb.transaction.txid))
+        cb.newcoins = cb.transaction.totalvalue - cb.block.totalfee
+        self.db.session.add(cb)
+        self.db.session.commit()
+        return True
+
     def get_transaction(self, txid):
         return self.daemon.load_transaction(txid)
 
@@ -115,7 +165,7 @@ def indexer(context):
     context.sync_blocks()
     print('\nSwitching to live tracking of mempool and chaintip.\n')
     while True:
-        if not (context.query_mempool() or context.sync_blocks() or context.add_single_tx_mutations() or context.update_single_balance()):
+        if not (context.query_mempool() or context.sync_blocks() or context.add_single_tx_mutations() or context.update_single_balance() or context.migrate_old_data()):
             sleep(1)
 
 def background_task(context):

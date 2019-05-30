@@ -118,6 +118,7 @@ class Block(Base):
     hash = Column(Binary(32), unique=True)
     height = Column(Integer, unique=True)
     size = Column(Integer)
+    totalfee = Column(Float(asdecimal=True))
     timestamp = Column(DateTime, index=True)
     difficulty = Column(Float(asdecimal=True))
     firstseen = Column(DateTime)
@@ -155,6 +156,7 @@ class CoinbaseInfo(Base):
 
     block_id = Column('block', Integer, ForeignKey('block.id'), primary_key=True)
     transaction_id = Column('transaction', BigInteger, ForeignKey('transaction.id'), unique=True)
+    newcoins = Column(Float(asdecimal=True))
     raw = Column(VARBINARY(256))
     signature = Column(String(32), index=True)
     mainoutput_id = Column('mainoutput', BigInteger, ForeignKey('txout.id'), index=True)

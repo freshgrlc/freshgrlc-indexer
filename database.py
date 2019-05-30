@@ -183,6 +183,7 @@ class DatabaseSession(object):
         block.hash = blockhash
         block.height = int(blockinfo['height'])
         block.size = blockinfo['size']
+        block.totalfee = 0.0
         block.timestamp = datetime.utcfromtimestamp(blockinfo['time'])
         block.difficulty = blockinfo['difficulty']
         block.firstseen = datetime.utcfromtimestamp(blockinfo['relayedat']) if 'relayedat' in blockinfo and blockinfo['relayedat'] is not None else None
@@ -194,6 +195,9 @@ class DatabaseSession(object):
 
         for tx in blockinfo['tx']:
             self.confirm_transaction(tx, block.id)
+
+        block.totalfee = sum([ self.transaction(tx).fee for tx in blockinfo['tx'] ])
+        self.session.add(block)
 
         if len(coinbase_signatures) > 0:
             print('Adding  cb  %s' % coinbase_signatures.keys()[0])
@@ -473,6 +477,8 @@ class DatabaseSession(object):
         coinbaseinfo.signature = None
 
         totalout = sum([o[2] for o in outputs])
+        coinbaseinfo.newcoins = totalout - block.totalfee
+
         best_output = list(filter(lambda o: o[2] > (totalout * 95 / 100), outputs))
         best_output = best_output[0] if len(best_output) > 0 else None
         coinbaseinfo.mainoutput_id = self.session.query(

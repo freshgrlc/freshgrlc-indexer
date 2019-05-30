@@ -219,7 +219,7 @@ CREATE TABLE `transaction` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `txid` (`txid`),
   UNIQUE KEY `confirmation` (`confirmation`),
-  CONSTRAINT `fk_transaction_confirmation` FOREIGN KEY (`confirmation`) REFERENCES `blocktx` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
+  CONSTRAINT `fk_transaction_confirmation` FOREIGN KEY (`confirmation`) REFERENCES `blocktx` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 

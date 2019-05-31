@@ -15,7 +15,7 @@ from eventgen import IndexerEventStream
 webapp = Flask('indexer-api')
 db = DatabaseIO(Configuration.DATABASE_URL, debug=Configuration.DEBUG_SQL)
 
-stream = IndexerEventStream(db)
+stream = IndexerEventStream(db, poll_interval=(2 if not Configuration.DEBUG_SQL else 30))
 
 
 def param_true(param_name, default=None):

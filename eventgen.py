@@ -37,8 +37,10 @@ class Mempool(object):
 
 
 class IndexerEventStream(EventStream):
-    def __init__(self, db):
+    def __init__(self, db, poll_interval=2, keepalive_interval=20):
         super(IndexerEventStream, self).__init__()
+        self.poll_interval = poll_interval
+        self.keepalive_interval = keepalive_interval
         self.db = db
         self.mempool = Mempool(db)
         spawn(self.listener)
@@ -64,7 +66,7 @@ class IndexerEventStream(EventStream):
         last_tx_internal_id = self.db.latest_transactions(limit=1)[0].id
 
         while True:
-            sleep(2)
+            sleep(self.poll_interval)
 
             with self.db.new_session() as session:
                 cur_height = session.chaintip().height
@@ -90,5 +92,5 @@ class IndexerEventStream(EventStream):
 
     def keepalive(self):
         while True:
-            sleep(20)
+            sleep(self.keepalive_interval)
             self.publish(Event('keepalive', None, channel='keepalive'))

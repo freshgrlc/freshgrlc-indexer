@@ -17,6 +17,8 @@ def convert_date(date):
 def json_preprocess_value(k, v, cls):
     if v == None:
         return None
+    if type(v) == list:
+        return [ json_preprocess_value(None, e, None) for e in v ]
     if type(v) == dict:
         return json_preprocess_dict(v)
 
@@ -105,6 +107,8 @@ def json_preprocess_dbobject(obj, resolve_foreignkeys=None, whitelist=None, refl
                         json_preprocess_dbobject(ref, resolve_foreignkeys=resolve_foreignkeys, whitelist=whitelist, reflinks=reflinks, context=my_context)
                         for ref in refs
                     ]
+                elif isinstance(refs, dict):
+                    converted[colname] = json_preprocess_dict(refs)
                 else:
                     converted[colname] = json_preprocess_dbobject(refs, resolve_foreignkeys=resolve_foreignkeys, whitelist=whitelist, reflinks=reflinks, context=my_context)
         else:

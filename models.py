@@ -131,7 +131,7 @@ class Block(Base):
     transactionreferences = relationship('BlockTransaction', back_populates='block', cascade='save-update, merge, delete')
 
     API_DATA_FIELDS = [hash, height, size, timestamp, difficulty, firstseen, relayedby]
-    POSTPROCESS_RESOLVE_FOREIGN_KEYS = [miner, 'Block.transactions']
+    POSTPROCESS_RESOLVE_FOREIGN_KEYS = [miner, 'Block.transactions', 'Transaction.mutations']
 
     def __getattribute__(self, name):
         if name == 'transactions':
@@ -251,7 +251,7 @@ class Transaction(Base):
     address_mutations = relationship('Mutation', back_populates='transaction', cascade='save-update, merge, delete')
 
     API_DATA_FIELDS = [txid, size, fee, totalvalue, firstseen, 'Transaction.confirmed', 'Transaction.coinbase']
-    POSTPROCESS_RESOLVE_FOREIGN_KEYS = ['Transaction.block']
+    POSTPROCESS_RESOLVE_FOREIGN_KEYS = ['Transaction.block', 'Transaction.mutations']
 
     def __getattribute__(self, name):
         if name == 'confirmed':
@@ -262,6 +262,12 @@ class Transaction(Base):
             return self.confirmation.block if self.confirmation_id != None else None
         if name == 'block_id':
             return self.confirmation.block_id if self.confirmation_id != None else None
+        if name == 'mutations':
+            mutations = [ (m.address.address, m.amount) for m in self.address_mutations ]
+            return {
+                'inputs': dict([ (m[0], -m[1]) for m in filter(lambda m: m[1] < 0.0, mutations) ]),
+                'outputs': dict(filter(lambda m: m[1] > 0.0, mutations))
+            }
         if name == 'time':
             if self.firstseen != None:
                 return self.firstseen

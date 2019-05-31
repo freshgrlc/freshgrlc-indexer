@@ -658,7 +658,7 @@ class DatabaseSession(object):
                     SELECT `txout`.`address`, `txout`.`amount` FROM `transaction`
                         JOIN `txout` ON `transaction`.`id` = `txout`.`transaction`
                         WHERE `transaction`.`id` = :tx_id
-                    UNION
+                    UNION ALL
                     SELECT `txout`.`address`, '0' - `txout`.`amount` FROM `transaction`
                         JOIN `txin` ON `transaction`.`id` = `txin`.`transaction`
                         JOIN `txout` ON `txin`.`input` = `txout`.`id`

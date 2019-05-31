@@ -284,9 +284,9 @@ class DatabaseSession(object):
             for txref in self.session.query(BlockTransaction).filter(BlockTransaction.block_id == block.id).all():
                 tx = txref.transaction
                 tx.confirmation = None
-                for tx_output in tx.outputs:
+                for tx_output in tx.txoutputs:
                     tx_output.address.balance_dirty = 1
-                for tx_input in tx.inputs:
+                for tx_input in tx.txinputs:
                     tx_input.input.address.balance_dirty = 1
                     tx_input.input.spentby_id = None
 
@@ -526,7 +526,7 @@ class DatabaseSession(object):
 
         # tx.confirmation_id = blockref.id
         #
-        # for input in tx.inputs:
+        # for input in tx.txinputs:
         #    input.input.spentby_id = input.id
         self.session.execute('UPDATE `transaction` SET `confirmation` = :blockref WHERE `id` = :tx_id;', {'blockref': blockref.id, 'tx_id': tx_id})
         self.session.execute('UPDATE `txout` LEFT JOIN `txin` ON `txout`.`id` = `txin`.`input` SET `spentby` = `txin`.`id` WHERE `txin`.`transaction` = :tx_id;', {

@@ -3,6 +3,9 @@ from sqlalchemy import Column, ForeignKey, Integer, BigInteger, Float, String, C
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
 
+from config import Configuration
+
+
 SOLO_POOL_GROUP_ID = 1
 
 
@@ -95,6 +98,41 @@ class TXOUT_TYPES:
         return cls.RAW
 
 
+def address_friendly_name(address):
+    address_type = ADDRESS_TYPES.resolve(address.type)
+    if address.address != None:
+        return address.address
+    if address_type == ADDRESS_TYPES.RAW:
+        return 'Script: ' + address.raw
+    if address_type == ADDRESS_TYPES.DATA:
+        return 'Data: ' + address.raw
+    return 'Unknown <' + address.raw + '>'
+
+
+def _make_transaction_ref(txid):
+    return {'txid': txid, 'href': Configuration.API_ENDPOINT + '/transactions/' + txid + '/'}
+
+
+def make_transaction_ref(transaction):
+    return _make_transaction_ref(hexlify(transaction.txid))
+
+
+def make_transaction_output_ref(txoutput):
+    index = int(txoutput.index)
+    ref = make_transaction_ref(txoutput.transaction)
+    ref['href'] += 'outputs/' + str(index) + '/'
+    ref['output'] = index
+    return ref
+
+
+def make_transaction_input_ref(txinput):
+    index = int(txinput.index)
+    ref = make_transaction_ref(txinput.transaction)
+    ref['href'] += 'inputs/' + str(index) + '/'
+    ref['input'] = index
+    return ref
+
+
 Base = declarative_base()
 
 
@@ -131,7 +169,7 @@ class Block(Base):
     transactionreferences = relationship('BlockTransaction', back_populates='block', cascade='save-update, merge, delete')
 
     API_DATA_FIELDS = [hash, height, size, timestamp, difficulty, firstseen, relayedby]
-    POSTPROCESS_RESOLVE_FOREIGN_KEYS = [miner, 'Block.transactions', 'Transaction.mutations']
+    POSTPROCESS_RESOLVE_FOREIGN_KEYS = [miner, 'Block.transactions', 'Transaction.mutations', 'Transaction.inputs', 'Transaction.outputs']
 
     def __getattribute__(self, name):
         if name == 'transactions':
@@ -246,12 +284,12 @@ class Transaction(Base):
     confirmation = relationship('BlockTransaction', foreign_keys=[confirmation_id])
     blockreferences = relationship('BlockTransaction', back_populates='transaction', foreign_keys=[BlockTransaction.transaction_id], cascade='save-update, merge, delete')
     coinbaseinfo = relationship('CoinbaseInfo', back_populates='transaction')
-    inputs = relationship('TransactionInput', back_populates='transaction', cascade='save-update, merge, delete')
-    outputs = relationship('TransactionOutput', back_populates='transaction', cascade='save-update, merge, delete')
+    txinputs = relationship('TransactionInput', back_populates='transaction', cascade='save-update, merge, delete')
+    txoutputs = relationship('TransactionOutput', back_populates='transaction', cascade='save-update, merge, delete')
     address_mutations = relationship('Mutation', back_populates='transaction', cascade='save-update, merge, delete')
 
     API_DATA_FIELDS = [txid, size, fee, totalvalue, firstseen, 'Transaction.confirmed', 'Transaction.coinbase']
-    POSTPROCESS_RESOLVE_FOREIGN_KEYS = ['Transaction.block', 'Transaction.mutations']
+    POSTPROCESS_RESOLVE_FOREIGN_KEYS = ['Transaction.block', 'Transaction.mutations', 'Transaction.inputs', 'Transaction.outputs']
 
     def __getattribute__(self, name):
         if name == 'confirmed':
@@ -263,11 +301,30 @@ class Transaction(Base):
         if name == 'block_id':
             return self.confirmation.block_id if self.confirmation_id != None else None
         if name == 'mutations':
-            mutations = [ (m.address.address, m.amount) for m in self.address_mutations ]
+            mutations = [ (address_friendly_name(m.address), m.amount) for m in self.address_mutations ]
             return {
                 'inputs': dict([ (m[0], -m[1]) for m in filter(lambda m: m[1] < 0.0, mutations) ]),
                 'outputs': dict(filter(lambda m: m[1] > 0.0, mutations))
             }
+        if name == 'inputs':
+            return dict([
+                (input.index, {
+                    'amount':   input.input.amount,
+                    'type':     TXOUT_TYPES.resolve(input.input.type),
+                    'address':  address_friendly_name(input.input.address),
+                    'spends':   make_transaction_output_ref(input.input)
+                }) for input in self.txinputs
+            ])
+        if name == 'outputs':
+            return dict([
+                (output.index, {
+                    'amount':   output.amount,
+                    'type':     TXOUT_TYPES.resolve(output.type),
+                    'address':  address_friendly_name(output.address),
+                    'script':   output.address.raw if ADDRESS_TYPES.resolve(output.address.type) != ADDRESS_TYPES.DATA else None,
+                    'spentby':  make_transaction_input_ref(output.spentby) if output.spentby != None else None
+                }) for output in self.txoutputs
+            ])
         if name == 'time':
             if self.firstseen != None:
                 return self.firstseen
@@ -284,7 +341,7 @@ class TransactionInput(Base):
     index = Column(Integer)
     input_id = Column('input', BigInteger, ForeignKey('txout.id'), index=True)
 
-    transaction = relationship('Transaction', back_populates='inputs')
+    transaction = relationship('Transaction', back_populates='txinputs')
     input = relationship('TransactionOutput', back_populates='spenders', foreign_keys=[input_id])
 
 
@@ -299,7 +356,7 @@ class TransactionOutput(Base):
     amount = Column(Float(asdecimal=True))
     spentby_id = Column('spentby', BigInteger, ForeignKey('txin.id'), unique=True)
 
-    transaction = relationship('Transaction', back_populates='outputs')
+    transaction = relationship('Transaction', back_populates='txoutputs')
     address = relationship('Address')
     spenders = relationship('TransactionInput', back_populates='input', foreign_keys=[TransactionInput.input_id])
     spentby = relationship('TransactionInput', foreign_keys=[spentby_id])

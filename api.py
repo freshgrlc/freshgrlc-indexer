@@ -7,7 +7,7 @@ from werkzeug.datastructures import Headers
 
 from config import Configuration
 from database import DatabaseIO
-from models import Block
+from models import Block, _make_transaction_ref
 from postprocessor import QueryDataPostProcessor
 from eventgen import IndexerEventStream
 
@@ -73,7 +73,7 @@ def address_mutations(address):
 
             mutations = session.address_mutations(address, confirmed=param_true('confirmed'), start=pp.start, limit=pp.limit)
             for mutation in mutations:
-                mutation['transaction'] = {'txid': mutation['txid'], 'href': QueryDataPostProcessor.API_ENDPOINT + '/transactions/' + mutation['txid'] + '/'}
+                mutation['transaction'] = _make_transaction_ref(mutation['txid'])
                 del mutation['txid']
 
             return pp.process_raw(mutations).json()
@@ -88,6 +88,8 @@ def blocks():
             pp.baseurl('/blocks/<Block.hash>/')
             pp.reflinks('miner', 'transactions')
             pp.reflink('mutations', '/transactions/<Transaction.txid>/mutations')
+            pp.reflink('inputs', '/transactions/<Transaction.txid>/inputs')
+            pp.reflink('outputs', '/transactions/<Transaction.txid>/outputs')
             pp.autoexpand()
             pp.reflink('block', '/blocks/<query:transaction.block.hash>/', ['hash', 'height'])
             return pp.process(session.blocks(pp.start, pp.limit)).json()
@@ -101,6 +103,8 @@ def block(blockid):
             pp.baseurl('/blocks/<Block.hash>/')
             pp.reflinks('miner', 'transactions')
             pp.reflink('mutations', '/transactions/<Transaction.txid>/mutations')
+            pp.reflink('inputs', '/transactions/<Transaction.txid>/inputs')
+            pp.reflink('outputs', '/transactions/<Transaction.txid>/outputs')
             pp.autoexpand()
             pp.reflink('block', '/blocks/<query:transaction.block.hash>/', ['hash', 'height'])
             return pp.process(session.block(blockid)).json()
@@ -122,8 +126,10 @@ def blocktransactions(blockid):
     with db.new_session() as session:
         with QueryDataPostProcessor() as pp:
             pp.reflink('mutations', '/transactions/<Transaction.txid>/mutations')
+            pp.reflink('inputs', '/transactions/<Transaction.txid>/inputs')
+            pp.reflink('outputs', '/transactions/<Transaction.txid>/outputs')
             pp.autoexpand()
-            pp.resolve_keys('Block.transactions', 'Transaction.block', 'Transaction.mutations')
+            pp.resolve_keys('Block.transactions', 'Transaction.block', 'Transaction.mutations', 'Transaction.inputs', 'Transaction.outputs')
             pp.reflink('block', '/blocks/<query:transaction.block.hash>/', ['hash', 'height'])
             return pp.process(session.block(blockid))['transactions'].json()
 
@@ -135,7 +141,7 @@ def transactions():
         with QueryDataPostProcessor() as pp:
             pp.pagination()
             pp.baseurl('/transactions/<Transaction.txid>/')
-            pp.reflinks('mutations')
+            pp.reflinks('mutations', 'inputs', 'outputs')
             pp.reflink('block', '/blocks/<query:transaction.block.hash>/', ['hash', 'height'])
             pp.reflink('miner', '/blocks/<query:transaction.block.hash>/miner')
             pp.autoexpand()
@@ -160,7 +166,7 @@ def transaction(txid):
     with db.new_session() as session:
         with QueryDataPostProcessor() as pp:
             pp.baseurl('/transactions/<Transaction.txid>/')
-            pp.reflinks('mutations')
+            pp.reflinks('mutations', 'inputs', 'outputs')
             pp.reflink('block', '/blocks/<query:transaction.block.hash>/', ['hash', 'height'])
             pp.reflink('miner', '/blocks/<query:transaction.block.hash>/miner')
             pp.autoexpand()
@@ -175,6 +181,38 @@ def transaction_mutations(txid):
     with db.new_session() as session:
         with QueryDataPostProcessor() as pp:
             return pp.process_raw(session.transaction(txid, include_confirmation_info=False).mutations).json()
+
+
+@webapp.route('/transactions/<txid>/inputs/')
+@cross_origin()
+def transaction_inputs(txid):
+    with db.new_session() as session:
+        with QueryDataPostProcessor() as pp:
+            return pp.process_raw(session.transaction(txid, include_confirmation_info=False).inputs).json()
+
+
+@webapp.route('/transactions/<txid>/inputs/<index>/')
+@cross_origin()
+def transaction_input(txid, index):
+    with db.new_session() as session:
+        with QueryDataPostProcessor() as pp:
+            return pp.process_raw(session.transaction(txid, include_confirmation_info=False).inputs[int(index)]).json()
+
+
+@webapp.route('/transactions/<txid>/outputs/')
+@cross_origin()
+def transaction_outputs(txid):
+    with db.new_session() as session:
+        with QueryDataPostProcessor() as pp:
+            return pp.process_raw(session.transaction(txid, include_confirmation_info=False).outputs).json()
+
+
+@webapp.route('/transactions/<txid>/outputs/<index>/')
+@cross_origin()
+def transaction_output(txid, index):
+    with db.new_session() as session:
+        with QueryDataPostProcessor() as pp:
+            return pp.process_raw(session.transaction(txid, include_confirmation_info=False).outputs[int(index)]).json()
 
 
 @webapp.route('/networkstats/')

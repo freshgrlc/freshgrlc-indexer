@@ -157,7 +157,6 @@ class Context(Configuration):
         return False
 
     def migration_update_block_totalfee(self):
-        self.db.session.rollback()
         block = self.db.session.query(Block).filter(Block.totalfee == None).filter(Block.id > self.migration_last_id).first()
 
         if block == None:
@@ -168,11 +167,10 @@ class Context(Configuration):
         print('Migrate blk %s' % hexlify(block.hash))
         block.totalfee = sum([ tx.fee for tx in block.transactions ])
         self.db.session.add(block)
-        self.db.session.commit()
+        self.db.session.flush()
         return True
 
     def migration_update_coinbase_newcoins(self):
-        self.db.session.rollback()
         cb = self.db.session.query(CoinbaseInfo).filter(CoinbaseInfo.newcoins == None).filter(CoinbaseInfo.block_id > self.migration_last_id).first()
 
         if cb == None:
@@ -183,7 +181,7 @@ class Context(Configuration):
         print('Migrate cb  %s' % hexlify(cb.transaction.txid))
         cb.newcoins = cb.transaction.totalvalue - cb.block.totalfee
         self.db.session.add(cb)
-        self.db.session.commit()
+        self.db.session.flush()
         return True
 
     def get_transaction(self, txid):
@@ -214,7 +212,10 @@ def indexer(context):
 
         if do_until_timeout(context.update_single_balance, timeout):
             continue
+
+        # Data migration is done in bulk (with large commits!)
         if do_until_timeout(context.migrate_old_data, timeout):
+            context.db.session.commit()
             continue
         sleep(1)
 

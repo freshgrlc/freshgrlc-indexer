@@ -24,7 +24,6 @@ class Context(Configuration):
         self.daemon = Daemon(self.DAEMON_URL)
         self.db = DatabaseIO(self.DATABASE_URL, timeout=timeout, utxo_cache=self.UTXO_CACHE, debug=self.DEBUG_SQL)
         self.mempoolcache = TTLCache(ttl=600, maxsize=4096)
-        self.last_mutations_txid = None
         self.migration_type = 'init'
         self.migration_last_id = None
 
@@ -140,6 +139,12 @@ class Context(Configuration):
 
     def migrate_old_data(self):
         if self.migration_type == 'init':
+            self.migration_type = 'mutations'
+            self.migration_last_id = 0
+
+        if self.migration_type == 'mutations':
+            if self.migration_update_tx_mutations():
+                return True
             self.migration_type = 'block_totalfee'
             self.migration_last_id = 0
 
@@ -155,6 +160,25 @@ class Context(Configuration):
             self.migration_type = None
             self.migration_last_id = 0
         return False
+
+    def migration_update_tx_mutations(self):
+        transaction = self.db.session.query(
+            Transaction
+        ).join(
+            Transaction.address_mutations,
+            outer=True
+        ).filter(
+            Transaction.id > self.migration_last_id,
+            Mutation.id == None
+        ).first()
+
+        if transaction == None:
+            return False
+
+        self.migration_last_id = transaction.id
+
+        self.db.add_tx_mutations_info(transaction)
+        self.db.session.flush()
 
     def migration_update_block_totalfee(self):
         block = self.db.session.query(Block).filter(Block.totalfee == None).filter(Block.id > self.migration_last_id).first()

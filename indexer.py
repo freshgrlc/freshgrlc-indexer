@@ -173,7 +173,7 @@ class Context(Configuration):
             Transaction
         ).join(
             Transaction.address_mutations,
-            outer=True
+            isouter=True
         ).filter(
             Transaction.id > self.migration_last_id,
             Mutation.id == None
@@ -186,6 +186,7 @@ class Context(Configuration):
 
         self.db.add_tx_mutations_info(transaction)
         self.db.session.flush()
+        return True
 
     def migration_update_add_address_script(self):
         address = self.db.session.query(

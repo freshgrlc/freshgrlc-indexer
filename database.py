@@ -91,20 +91,25 @@ class DatabaseSession(object):
         return [{'time': convert_date(result[0].time), 'txid': hexlify(result[0].txid), 'change': float(result[1].amount), 'confirmed': result[0].confirmed} for result in results]
 
     def query_transactions(self, include_confirmation_info=False, confirmed_only=False):
-        if not include_confirmation_info:
-            return self.session.query(Transaction)
+        if include_confirmation_info:
+            query = self.session.query(
+                Transaction,
+                BlockTransaction,
+                Block
+            ).join(
+                Transaction.confirmation,
+                isouter=True
+            ).join(
+                Block,
+                isouter=True
+            )
+        else:
+            query = self.session.query(Transaction)
 
-        return self.session.query(
-            Transaction,
-            BlockTransaction,
-            Block
-        ).join(
-            Transaction.confirmation,
-            isouter=(not confirmed_only)
-        ).join(
-            Block,
-            isouter=(not confirmed_only)
-        )
+        if confirmed_only:
+            query = query.filter(Transaction.confirmation_id != None)
+
+        return query
 
     def transaction(self, txid, include_confirmation_info=False):
         if len(txid) == 64:
@@ -139,10 +144,7 @@ class DatabaseSession(object):
         self.session.commit()
 
     def latest_transactions(self, confirmed_only=False, limit=100):
-        return [
-            result[0]
-            for result in self.query_transactions(include_confirmation_info=True, confirmed_only=confirmed_only).order_by(Transaction.id.desc()).limit(limit).all()
-        ]
+        return self.query_transactions(include_confirmation_info=False, confirmed_only=confirmed_only).order_by(Transaction.id.desc()).limit(limit).all()
 
     def pool_stats(self, since):
         results = self.session.query(

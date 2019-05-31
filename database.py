@@ -613,9 +613,10 @@ class DatabaseSession(object):
                 self.address = source.address
                 self.raw = source.raw
 
+        raw = txout_address_info['asm']
+
         if 'addresses' in txout_address_info and len(txout_address_info['addresses']) == 1:
             address = txout_address_info['addresses'][0]
-            raw = None
             addr_type = ADDRESS_TYPES.BASE58
 
             if len(address) > 34:
@@ -630,7 +631,6 @@ class DatabaseSession(object):
         else:
             db_address = None
             address = None
-            raw = txout_address_info['asm']
             if raw[0:10] == 'OP_RETURN ' and len(raw.split(' ')) == 2:
                 raw = raw.split(' ')[1]
                 addr_type = ADDRESS_TYPES.DATA

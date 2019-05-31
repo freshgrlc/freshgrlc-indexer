@@ -9,7 +9,8 @@ from traceback import print_exc
 from sys import version_info, argv
 
 from coindaemon import Daemon
-from database import DatabaseIO, Block, CoinbaseInfo
+from database import DatabaseIO
+from models import Address, Block, CoinbaseInfo, Mutation, Transaction
 from config import Configuration
 
 if version_info[0] > 2:
@@ -145,6 +146,12 @@ class Context(Configuration):
         if self.migration_type == 'mutations':
             if self.migration_update_tx_mutations():
                 return True
+            self.migration_type = 'address_script'
+            self.migration_last_id = 0
+
+        if self.migration_type == 'address_script':
+            if self.migration_update_add_address_script():
+                return True
             self.migration_type = 'block_totalfee'
             self.migration_last_id = 0
 
@@ -179,6 +186,30 @@ class Context(Configuration):
 
         self.db.add_tx_mutations_info(transaction)
         self.db.session.flush()
+
+    def migration_update_add_address_script(self):
+        address = self.db.session.query(
+            Address
+        ).filter(
+            Address.id > self.migration_last_id,
+            Address.type.in_([ 0, 1 ]),
+            Address.raw == None
+        ).first()
+
+        if address == None:
+            return False
+
+        self.migration_last_id = address.id
+
+        print('Import  scp %s' % address.address)
+
+        script = self.daemon.validateaddress(address.address)['scriptPubKey']
+        script = self.daemon.decodescript(script)['asm']
+
+        address.raw = script
+        self.db.session.add(address)
+        self.db.session.flush()
+        return True
 
     def migration_update_block_totalfee(self):
         block = self.db.session.query(Block).filter(Block.totalfee == None).filter(Block.id > self.migration_last_id).first()

@@ -236,6 +236,8 @@ CREATE TABLE `txin` (
   `index` int(11) NOT NULL,
   `input` bigint(20) NOT NULL,
   PRIMARY KEY (`id`),
+  UNIQUE KEY `txin` (`transaction`,`index`),
+  UNIQUE KEY `txspend` (`transaction`,`input`),
   KEY `fk_transaction_idx` (`transaction`),
   KEY `fk_txin_input_idx` (`input`),
   CONSTRAINT `fk_txin_input` FOREIGN KEY (`input`) REFERENCES `txout` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,

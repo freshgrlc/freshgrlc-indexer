@@ -266,12 +266,7 @@ def do_until_timeout(operation, timeout):
     return False
 
 
-def indexer(context):
-    log('\nChecking database state...\n')
-    context.verify_state()
-    log('\nPerforming initial sync...\n')
-    context.sync_blocks(initial=True)
-    log('\nSwitching to live tracking of mempool and chaintip.\n')
+def do_in_loop(operation, before_sleep=None, interval=1):
     working = False
     while True:
         if working is None:
@@ -279,32 +274,47 @@ def indexer(context):
         elif working == False:
             working = None
 
+        if operation():
+            continue
+
+        if working:
+            before_sleep()
+
+        working = False
+        sleep(interval)
+
+
+def indexer(context):
+    def main_loop():
         context.query_mempool()
         if context.sync_blocks():
-            continue
+            return True
 
         timeout = time() + 3
 
         if do_until_timeout(context.update_single_balance, timeout):
-            continue
+            return True
 
         # Data migration is done in bulk (with large commits!)
         if do_until_timeout(context.migrate_old_data, timeout):
             context.db.session.commit()
-            continue
+            return True
+        return False
 
-        if working:
-            log_event('Synced', 'chn', '')
+    log('\nChecking database state...\n')
+    context.verify_state()
 
-        working = False
-        sleep(1)
+    log('\nPerforming initial sync...\n')
+    context.sync_blocks(initial=True)
+
+    log('\nSwitching to live tracking of mempool and chaintip.\n')
+    do_in_loop(operation=main_loop, before_sleep=lambda: log_event('Synced', 'chn', ''))
 
 
 def background_task(context):
     context.db.reset_slow_address_balance_updates()
-    while True:
-        if not context.update_single_balance_background():
-            sleep(10)
+    do_in_loop(operation=context.update_single_balance_background, before_sleep=lambda: log_event('Synced', 'chn', ''), interval=30)
+
 
 def loop(func, timeout=30):
     while True:

@@ -268,7 +268,13 @@ def indexer(context):
     print('\nPerforming initial sync...\n')
     context.sync_blocks(initial=True)
     print('\nSwitching to live tracking of mempool and chaintip.\n')
+    working = False
     while True:
+        if working is None:
+            working = True
+        elif working == False:
+            working = None
+
         context.query_mempool()
         if context.sync_blocks():
             continue
@@ -282,6 +288,11 @@ def indexer(context):
         if do_until_timeout(context.migrate_old_data, timeout):
             context.db.session.commit()
             continue
+
+        if working:
+            print('Synced  chn')
+
+        working = False
         sleep(1)
 
 

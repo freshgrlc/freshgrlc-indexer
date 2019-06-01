@@ -22,7 +22,7 @@ else:
 
 class Context(Configuration):
     def __init__(self, timeout=30):
-        self.daemon = Daemon(self.DAEMON_URL)
+        self.daemon = lambda: Daemon(self.DAEMON_URL)
         self.db = DatabaseIO(self.DATABASE_URL, timeout=timeout, utxo_cache=self.UTXO_CACHE, debug=self.DEBUG_SQL)
         self.mempoolcache = TTLCache(ttl=600, maxsize=4096)
         self.migration_type = 'init'
@@ -49,19 +49,20 @@ class Context(Configuration):
 
 
     def find_common_ancestor(self):
-        chaintip_height = self.daemon.get_current_height()
+        daemon = self.daemon()
+        chaintip_height = daemon.get_current_height()
         indexer_tip = self.db.chaintip()
 
         if indexer_tip == None:
             return -1, -1, chaintip_height
 
         ancestor_height = indexer_tip.height
-        chain_block_hash = self.daemon.getblockhash(ancestor_height)
+        chain_block_hash = daemon.getblockhash(ancestor_height)
 
         if indexer_tip.hash != unhexlify(chain_block_hash):
             ancestor_height -= 1
             while ancestor_height > 0:
-                chain_block_hash = self.daemon.getblockhash(ancestor_height)
+                chain_block_hash = daemon.getblockhash(ancestor_height)
                 indexer_block = self.db.block(ancestor_height)
 
                 if indexer_block.hash == unhexlify(chain_block_hash):
@@ -107,8 +108,9 @@ class Context(Configuration):
         return True
 
     def import_blockheight(self, height):
-        blockhash = self.daemon.getblockhash(height)
-        blockinfo = self.daemon.getblock(blockhash)
+        daemon = self.daemon()
+        blockhash = daemon.getblockhash(height)
+        blockinfo = daemon.getblock(blockhash)
         last_blockhash = blockinfo['previousblockhash']
         next_blockhash = blockinfo['nextblockhash'] if 'nextblockhash' in blockinfo else None
 
@@ -122,10 +124,10 @@ class Context(Configuration):
             if next_blockhash is None or unhexlify(next_blockhash) != nextblock.hash:
                 self.db.orphan_blocks(height + 1)
 
-        self.db.import_blockinfo(self.daemon.getblock(blockhash), tx_resolver=self.get_transaction)
+        self.db.import_blockinfo(daemon.getblock(blockhash), tx_resolver=self.get_transaction)
 
     def query_mempool(self):
-        new_txs = list(filter(lambda tx: tx not in self.mempoolcache, self.daemon.getrawmempool()))
+        new_txs = list(filter(lambda tx: tx not in self.mempoolcache, self.daemon().getrawmempool()))
         if len(new_txs) == 0:
             return False
         for txid in new_txs:
@@ -213,8 +215,9 @@ class Context(Configuration):
 
         print('Import  scp %s' % address.address)
 
-        script = self.daemon.validateaddress(address.address)['scriptPubKey']
-        script = self.daemon.decodescript(script)['asm']
+        daemon = self.daemon()
+        script = daemon.validateaddress(address.address)['scriptPubKey']
+        script = daemon.decodescript(script)['asm']
 
         address.raw = script
         self.db.session.add(address)
@@ -250,7 +253,7 @@ class Context(Configuration):
         return True
 
     def get_transaction(self, txid):
-        return self.daemon.load_transaction(txid)
+        return self.daemon().load_transaction(txid)
 
 
 def do_until_timeout(operation, timeout):

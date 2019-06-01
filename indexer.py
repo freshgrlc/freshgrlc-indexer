@@ -22,9 +22,9 @@ else:
 
 
 class Context(Configuration):
-    def __init__(self, timeout=30):
-        self.daemon = lambda: Daemon(self.DAEMON_URL)
-        self.db = DatabaseIO(self.DATABASE_URL, timeout=timeout, utxo_cache=self.UTXO_CACHE, debug=self.DEBUG_SQL)
+    def __init__(self, db_timeout=30):
+        self._daemon = None
+        self.db = DatabaseIO(self.DATABASE_URL, timeout=db_timeout, utxo_cache=self.UTXO_CACHE, debug=self.DEBUG_SQL)
         self.mempoolcache = TTLCache(ttl=600, maxsize=4096)
         self.migration_type = 'init'
         self.migration_last_id = None
@@ -34,6 +34,16 @@ class Context(Configuration):
 
     def __exit__(self, exc_type, exc_value, traceback):
         self.db.flush()
+
+    def daemon(self):
+        if self._daemon is not None:
+            try:
+                self._daemon.uptime()
+            except (socket.timeout, socket.error, httplib.BadStatusLine):
+                self._daemon = None
+        if self._daemon is None:
+            self._daemon = Daemon(self.DAEMON_URL)
+        return self._daemon
 
     def verify_state(self):
         # Looks like we can end up in a state where we have blocks
@@ -316,23 +326,16 @@ def background_task(context):
     do_in_loop(operation=context.update_single_balance_background, before_sleep=lambda: log_event('Synced', 'chn', ''), interval=30)
 
 
-def loop(func, timeout=30):
-    while True:
+def main(func, db_timeout=30):
+    with Context(db_timeout) as c:
         try:
-            with Context(timeout) as c:
-                try:
-                    func(c)
-                except KeyboardInterrupt:
-                    return
-        except (socket.timeout, socket.error, httplib.BadStatusLine, authproxy.JSONRPCException):
-            log('Caught connection exception:')
-            print_exc()
-        log('Connection lost. Reconnecting in 10 seconds...')
-        sleep(10)
+            func(c)
+        except KeyboardInterrupt:
+            return
 
 
 if __name__ == '__main__':
     if not '-B' in argv and not '--background-job' in argv:
-        loop(indexer)
+        main(indexer)
     else:
-        loop(background_task, 300)
+        main(background_task, db_timeout=300)

@@ -2,6 +2,8 @@ import json
 
 from gevent import sleep
 
+from logger import log
+
 
 class Event(object):
     def __init__(self, event, data, channel='general'):
@@ -28,18 +30,18 @@ class EventSubscriber(object):
 
     def read(self):
         try:
-            print('Subscriber \'%s\' listening on channels: %s' % (self, ', '.join(self.channels)))
+            log('Subscriber \'%s\' listening on channels: %s' % (self, ', '.join(self.channels)))
             while True:
                 sleep(0.1)
                 if len(self.events) > 0:
                     new_events = self.events
                     self.events = []
                     for event in new_events:
-                        print('Subscriber \'%s\': read event \'%s\'' % (self, event.event))
+                        log('Subscriber \'%s\': read event \'%s\'' % (self, event.event))
                         yield self.serialize(event)
         except GeneratorExit:
             self.unsubscribe()
-            print('Subscriber \'%s\' disconnected' % self)
+            log('Subscriber \'%s\' disconnected' % self)
 
     def serialize(self, event):
         return event

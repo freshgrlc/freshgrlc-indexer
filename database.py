@@ -9,6 +9,7 @@ from time import time
 
 from models import *
 from postprocessor import convert_date
+from logger import *
 
 
 INTEGER_TYPES = [int] if version_info[0] > 2 else [int, long]
@@ -137,7 +138,7 @@ class DatabaseSession(object):
         ).all()
 
         for block in corrupt_blocks:
-            print('Clear   blk %s (height %d)' % (hexlify(block.hash), block.height))
+            log_block_event(hexlify(block.hash), 'Clear', height=block.height)
             self.session.delete(block)
 
         self.session.flush()
@@ -245,7 +246,7 @@ class DatabaseSession(object):
         if blockinfo['height'] == 0:
             blockinfo['tx'] = []
 
-        print('Adding  blk %s%s' % (blockinfo['hash'], (' (via %s)' % blockinfo['relayedby']) if 'relayedby' in blockinfo and blockinfo['relayedby'] is not None else ''))
+        log_block_event(blockinfo['hash'], 'Adding', via=(blockinfo['relayedby'] if 'relayedby' in blockinfo else None))
 
         coinbase_signatures = {}
         for txid in blockinfo['tx']:
@@ -258,7 +259,7 @@ class DatabaseSession(object):
             block.height = int(blockinfo['height'])
             self.session.commit()
             self._chaintip = None
-            print('Update  blk %s (height %d)' % (hexlify(block.hash), block.height))
+            log_block_event(hexlify(block.hash), 'Update', height=block.height)
             return
 
         block = Block()
@@ -283,7 +284,7 @@ class DatabaseSession(object):
         self.session.add(block)
 
         if len(coinbase_signatures) > 0:
-            print('Adding  cb  %s' % coinbase_signatures.keys()[0])
+            log_event('Adding', 'cb', coinbase_signatures.keys()[0])
             self.add_coinbase_data(block, coinbase_signatures.keys()[0], coinbase_signatures.values()[0][0], coinbase_signatures.values()[0][1])
 
             if block.relayedby != None:
@@ -294,10 +295,10 @@ class DatabaseSession(object):
         else:
             raise Exception('No coinbase!')
 
-        print('Commit  blk %s' % hexlify(block.hash))
+        log_block_event(hexlify(block.hash), 'Commit')
         self.session.commit()
         self._chaintip = None
-        print('Added   blk %s (height %d, %s)' % (hexlify(block.hash), block.height, block.firstseen or block.timestamp))
+        log_block_event(hexlify(block.hash), 'Added', height=block.height, time=(block.firstseen or block.timestamp))
 
     def orphan_blocks(self, first_height):
         chaintip = self.chaintip()
@@ -314,7 +315,7 @@ class DatabaseSession(object):
             self.session.commit()
 
     def unconfirm_transaction(transaction):
-        print('Unconf  tx  %s' % hexlify(transaction.txid))
+        log_tx_event(hexlify(transaction.txid), 'Unconf')
         transaction.confirmation = None
         for tx_output in transaction.txoutputs:
             tx_output.address.balance_dirty = 1
@@ -349,14 +350,9 @@ class DatabaseSession(object):
 
     def import_transaction(self, txid, txinfo, regular_inputs, coinbase_inputs):
         if len(regular_inputs) > 0:
-            print('Adding  tx  %s (%d inputs, %d outputs, via %s)' % (
-                txid,
-                len(regular_inputs),
-                len(txinfo['vout']),
-                txinfo['relayedby'] if 'relayedby' in txinfo and txinfo['relayedby'] is not None else 'unknown'
-            ))
+            log_tx_event(txid, 'Adding', inputs=len(regular_inputs), outputs=len(txinfo['vout']), via=txinfo['relayedby'] if 'relayedby' in txinfo else 'unknown')
         else:
-            print('Adding  tx  %s (coinbase, %d outputs)' % (txid, len(txinfo['vout'])))
+            log_tx_event(txid, 'Adding', coinbase=True, outputs=len(txinfo['vout']))
 
         tx = Transaction()
 
@@ -406,28 +402,23 @@ class DatabaseSession(object):
 
         self.add_tx_mutations_info(tx)
 
-        print('Commit  tx  %s' % hexlify(tx.txid))
+        log_tx_event(hexlify(tx.txid), 'Commit')
         self.session.commit()
 
         if self.utxo_cache is not None:
             self.update_utxo_cache(txinfo['txid'], tx.id, utxos)
-            print('Added   tx  %s (utxo cache: %d, hit %d/%d, txid cache: %d, address cache: %d)' % (
-                txinfo['txid'],
-                self.utxo_cache.currsize,
-                utxo_cache_hits,
-                len(regular_inputs),
-                self.txid_cache.currsize,
-                self.address_cache.currsize
-            ))
+            log_tx_event(txinfo['txid'], 'Added',
+                utxo_cache=self.utxo_cache.currsize,
+                hit='%d/%d' % (utxo_cache_hits, len(regular_inputs)),
+                txid_cache=self.txid_cache.currsize,
+                address_cache=self.address_cache.currsize
+            )
         else:
-            print('Added   tx  %s (txid cache: %d, hit %d/%d, address cache: %d)' % (
-                txinfo['txid'],
-                self.txid_cache.currsize,
-                txid_cache_hits,
-                len(regular_inputs),
-                self.address_cache.currsize
-            ))
-
+            log_tx_event(txinfo['txid'], 'Added',
+                txid_cache=self.txid_cache.currsize,
+                hit='%d/%d' % (utxo_cache_hits, len(regular_inputs)),
+                address_cache=self.address_cache.currsize
+            )
         return tx
 
     def import_tx_inputs(self, inputs, internal_tx_id, utxo_info):
@@ -542,7 +533,7 @@ class DatabaseSession(object):
         }
 
     def confirm_transaction(self, txid, internal_block_id, tx_resolver=None):
-        print('Confirm tx  %s' % txid)
+        log_tx_event(txid, 'Confirm')
 
         tx_id = self.check_need_import_transaction(txid, tx_resolver=tx_resolver)
 
@@ -681,7 +672,7 @@ class DatabaseSession(object):
         return db_address
 
     def add_tx_mutations_info(self, tx, commit=False):
-        print('Import  mts %s' % hexlify(tx.txid))
+        log_event('Import', 'mts', hexlify(tx.txid))
         self.session.execute('''
             INSERT INTO `mutation` (`transaction`, `address`, `amount`)
                 SELECT :tx_id, `address`, SUM(`amount`) FROM (
@@ -711,7 +702,8 @@ class DatabaseSession(object):
         }).first()[0]
 
     def update_address_balance(self, address):
-        print('Update  bal %s' % (address.address if address.address is not None else ' < RAW >'))
+        address_s = address.address if address.address is not None else ' < RAW >'
+        log_balance_event(address_s, 'Update')
         start_time = time()
 
         utxos = self.session.query(TransactionOutput).filter(TransactionOutput.address_id == address.id, TransactionOutput.spentby_id == None).count()
@@ -729,12 +721,13 @@ class DatabaseSession(object):
         self.session.commit()
 
         if not skip:
-            print('Updated bal %s (%3d msec, %d utxos)' % (address.address if address.address is not None else ' < RAW >', int((time() - start_time) * 1000), utxos))
+            log_balance_event(address_s, 'Updated', time='%3d msec' % int((time() - start_time) * 1000), utxos=utxos)
         else:
-            print('Skipped bal %s (%d utxos)' % (address.address if address.address is not None else ' < RAW >', utxos))
+            log_balance_event(address_s, 'Skipped', utxos=utxos)
 
     def update_address_balance_slow(self, address):
-        print('Update  bal %s' % (address.address if address.address is not None else ' < RAW >'))
+        address_s = address.address if address.address is not None else ' < RAW >'
+        log_balance_event(address_s, 'Update')
         start_time = time()
 
         address.balance_dirty = 3
@@ -746,10 +739,11 @@ class DatabaseSession(object):
         if address.balance_dirty == 3:
             address.balance_dirty = 0
             address.balance = balance
-            print('Updated bal %s (%s, in %d secs)' % (address.address if address.address is not None else ' < RAW >', str(balance), time() - start_time))
+            log_balance_event(address_s, 'Updated', balance=str(balance), time='%d secs' % (time() - start_time))
             self.session.commit()
         else:
-            print('Abort   bal %s' % (address.address if address.address is not None else ' < RAW >'))
+            log_balance_event(address_s, 'Abort')
+
 
     def reset_slow_address_balance_updates(self):
         self.session.execute('UPDATE `address` SET `balance_dirty` = \'2\' WHERE `balance_dirty` = \'3\';');

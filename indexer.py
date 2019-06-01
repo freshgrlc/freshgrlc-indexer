@@ -12,6 +12,7 @@ from coindaemon import Daemon
 from database import DatabaseIO
 from models import Address, Block, CoinbaseInfo, Mutation, Transaction
 from config import Configuration
+from logger import log, log_event, log_block_event
 
 if version_info[0] > 2:
     import http.client as httplib
@@ -76,11 +77,11 @@ class Context(Configuration):
         ancestor_height, indexer_height, chain_height = self.find_common_ancestor()
 
         if initial:
-            print('Block heights:')
-            print('  Network:     %7d' % chain_height)
-            print('  Indexer:     %7d' % indexer_height)
-            print('  Last common: %7d' % ancestor_height)
-            print('')
+            log('Block heights:')
+            log('  Network:     %7d' % chain_height)
+            log('  Indexer:     %7d' % indexer_height)
+            log('  Last common: %7d' % ancestor_height)
+            log('')
 
         if ancestor_height == chain_height and not initial:
             return False
@@ -89,7 +90,7 @@ class Context(Configuration):
             self.db.orphan_blocks(ancestor_height + 1)
 
         if initial and self.db.blockcount() != ancestor_height:
-            print('\nIndexer is missing %d blocks, doing full rescan...\n' % (ancestor_height - self.db.blockcount()))
+            log('\nIndexer is missing %d blocks, doing full rescan...\n' % (ancestor_height - self.db.blockcount()))
 
             for base in range(1, ancestor_height + 1, 1000):
                 if self.db.blockcount(range=(base, base + 1000)) != 1000:
@@ -103,7 +104,7 @@ class Context(Configuration):
             if block == None:
                 self.import_blockheight(height)
             elif initial and height % 1000 == 0:
-                print('Checked blk %s (height %d)' % (hexlify(block.hash), block.height))
+                log('Checked blk %s (height %d)' % (hexlify(block.hash), block.height))
 
         return True
 
@@ -213,7 +214,7 @@ class Context(Configuration):
 
         self.migration_last_id = address.id
 
-        print('Import  scp %s' % address.address)
+        log_event('Import', 'scp', address.address)
 
         daemon = self.daemon()
         script = daemon.validateaddress(address.address)['scriptPubKey']
@@ -232,7 +233,7 @@ class Context(Configuration):
 
         self.migration_last_id = block.id
 
-        print('Migrate blk %s' % hexlify(block.hash))
+        log_block_event(hexlify(block.hash), 'Migrate')
         block.totalfee = sum([ tx.fee for tx in block.transactions ])
         self.db.session.add(block)
         self.db.session.flush()
@@ -246,7 +247,7 @@ class Context(Configuration):
 
         self.migration_last_id = cb.block_id
 
-        print('Migrate cb  %s' % hexlify(cb.transaction.txid))
+        log_event('Migrate', 'cb', hexlify(cb.transaction.txid))
         cb.newcoins = cb.transaction.totalvalue - cb.block.totalfee
         self.db.session.add(cb)
         self.db.session.flush()
@@ -266,11 +267,11 @@ def do_until_timeout(operation, timeout):
 
 
 def indexer(context):
-    print('\nChecking database state...\n')
+    log('\nChecking database state...\n')
     context.verify_state()
-    print('\nPerforming initial sync...\n')
+    log('\nPerforming initial sync...\n')
     context.sync_blocks(initial=True)
-    print('\nSwitching to live tracking of mempool and chaintip.\n')
+    log('\nSwitching to live tracking of mempool and chaintip.\n')
     working = False
     while True:
         if working is None:
@@ -293,7 +294,7 @@ def indexer(context):
             continue
 
         if working:
-            print('Synced  chn')
+            log_event('Synced', 'chn', '')
 
         working = False
         sleep(1)
@@ -314,9 +315,9 @@ def loop(func, timeout=30):
                 except KeyboardInterrupt:
                     return
         except (socket.timeout, socket.error, httplib.BadStatusLine, authproxy.JSONRPCException):
-            print('Caught connection exception:')
+            log('Caught connection exception:')
             print_exc()
-        print('Connection lost. Reconnecting in 10 seconds...')
+        log('Connection lost. Reconnecting in 10 seconds...')
         sleep(10)
 
 

@@ -140,8 +140,35 @@ class DatabaseSession(object):
             print('Clear   blk %s (height %d)' % (hexlify(block.hash), block.height))
             self.session.delete(block)
 
-        print('Commit  ')
-        self.session.commit()
+        self.session.flush()
+
+    def verify_confirmed_transactions_state(self):
+        for (block_id, blocktransaction_id, transaction) in self.session.query(
+                    Block.id,
+                    BlockTransaction.id,
+                    Transaction
+                ).join(
+                    Block.transactionreferences
+                ).join(
+                    BlockTransaction.transaction
+                ).filter(
+                    Block.height != None,
+                    Transaction.confirmation_id == None
+                ).all():
+            self.confirm_transaction(hexlify(transaction.txid), block_id, tx_resolver=None)
+
+    def verify_unconfirmed_transactions_state(self):
+        for transaction in self.session.query(
+                    Transaction
+                ).join(
+                    Transaction.confirmation
+                ).join(
+                    BlockTransaction.block,
+                    isouter=True
+                ).filter(
+                    Block.height == None
+                ).all():
+            self.unconfirm_transaction(transaction)
 
     def latest_transactions(self, confirmed_only=False, limit=100):
         return self.query_transactions(include_confirmation_info=False, confirmed_only=confirmed_only).order_by(Transaction.id.desc()).limit(limit).all()
@@ -281,17 +308,20 @@ class DatabaseSession(object):
         block = self.block(height)
 
         if block != None:
-            for txref in self.session.query(BlockTransaction).filter(BlockTransaction.block_id == block.id).all():
-                tx = txref.transaction
-                tx.confirmation = None
-                for tx_output in tx.txoutputs:
-                    tx_output.address.balance_dirty = 1
-                for tx_input in tx.txinputs:
-                    tx_input.input.address.balance_dirty = 1
-                    tx_input.input.spentby_id = None
-
             block.height = None
+            for txref in self.session.query(BlockTransaction).filter(BlockTransaction.block_id == block.id).all():
+                self.unconfirm_transaction(txref.transaction)
             self.session.commit()
+
+    def unconfirm_transaction(transaction):
+        print('Unconf  tx  %s' % hexlify(transaction.txid))
+        transaction.confirmation = None
+        for tx_output in transaction.txoutputs:
+            tx_output.address.balance_dirty = 1
+        for tx_input in transaction.txinputs:
+            tx_input.input.address.balance_dirty = 1
+            tx_input.input.spentby_id = None
+        self.session.add(transaction)
 
     def check_need_import_transaction(self, txid, tx_resolver, coinbase_signatures=None):
         tx_id = self.transaction_internal_id(txid)

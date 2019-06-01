@@ -39,6 +39,15 @@ class Context(Configuration):
         # without coinbase info if we exit at the wrong point?
         self.db.remove_blocks_without_coinbase()
 
+        # Verify transactions in on-chain blocks are confirmed
+        self.db.verify_confirmed_transactions_state()
+
+        # Verify confirmed transactions are on-chain
+        self.db.verify_unconfirmed_transactions_state()
+
+        self.db.session.commit()
+
+
     def find_common_ancestor(self):
         chaintip_height = self.daemon.get_current_height()
         indexer_tip = self.db.chaintip()

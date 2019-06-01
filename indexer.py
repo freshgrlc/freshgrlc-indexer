@@ -109,16 +109,22 @@ class Context(Configuration):
                         if block == None:
                             self.import_blockheight(height)
 
+        newblock = None
+        next_commit = time() + 3
         for height in range(ancestor_height + 1, chain_height + 1):
-            block = self.db.block(height)
-            if block == None:
-                self.import_blockheight(height)
-            elif initial and height % 1000 == 0:
-                log('Checked blk %s (height %d)' % (hexlify(block.hash), block.height))
+            newblock = self.import_blockheight(height, commit=False)
+            if next_commit <= time():
+                log_block_event(hexlify(newblock.hash), 'Commit')
+                self.db.session.commit()
+                newblock = None
+                next_commit = time() + 3
 
+        if newblock is not None:
+            log_block_event(hexlify(newblock.hash), 'Commit')
+            self.db.session.commit()
         return True
 
-    def import_blockheight(self, height):
+    def import_blockheight(self, height, commit=True):
         daemon = self.daemon()
         blockhash = daemon.getblockhash(height)
         blockinfo = daemon.getblock(blockhash)
@@ -135,7 +141,7 @@ class Context(Configuration):
             if next_blockhash is None or unhexlify(next_blockhash) != nextblock.hash:
                 self.db.orphan_blocks(height + 1)
 
-        self.db.import_blockinfo(daemon.getblock(blockhash), tx_resolver=self.get_transaction)
+        return self.db.import_blockinfo(daemon.getblock(blockhash), tx_resolver=self.get_transaction, commit=commit)
 
     def query_mempool(self):
         new_txs = list(filter(lambda tx: tx not in self.mempoolcache, self.daemon().getrawmempool()))

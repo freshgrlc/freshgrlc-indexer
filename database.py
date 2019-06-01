@@ -126,7 +126,6 @@ class DatabaseSession(object):
         return tx.id if tx is not None else None
 
     def remove_blocks_without_coinbase(self):
-        self.session.rollback()
         corrupt_blocks = self.session.query(
             Block
         ).join(
@@ -241,7 +240,7 @@ class DatabaseSession(object):
     def mempool(self):
         return self.session.query(Transaction).filter(Transaction.confirmation_id == None).filter(Transaction.coinbaseinfo == None).order_by(Transaction.id.desc()).all()
 
-    def import_blockinfo(self, blockinfo, tx_resolver=None):
+    def import_blockinfo(self, blockinfo, tx_resolver=None, commit=True):
         # Genesis block workaround
         if blockinfo['height'] == 0:
             blockinfo['tx'] = []
@@ -250,16 +249,23 @@ class DatabaseSession(object):
 
         coinbase_signatures = {}
         for txid in blockinfo['tx']:
-            self.check_need_import_transaction(txid, tx_resolver=tx_resolver, coinbase_signatures=coinbase_signatures)
+            self.check_need_import_transaction(txid, tx_resolver=tx_resolver, coinbase_signatures=coinbase_signatures, commit=False)
 
         blockhash = unhexlify(blockinfo['hash'])
         block = self.block(blockhash)
 
         if block != None:
-            block.height = int(blockinfo['height'])
-            self.session.commit()
-            self._chaintip = None
             log_block_event(hexlify(block.hash), 'Update', height=block.height)
+
+            block.height = int(blockinfo['height'])
+            self.session.add(block)
+
+            if commit:
+                self.session.commit()
+            else:
+                self.session.flush()
+
+            self._chaintip = None
             return
 
         block = Block()
@@ -295,10 +301,15 @@ class DatabaseSession(object):
         else:
             raise Exception('No coinbase!')
 
-        log_block_event(hexlify(block.hash), 'Commit')
-        self.session.commit()
+        if commit:
+            log_block_event(hexlify(block.hash), 'Commit')
+            self.session.commit()
+        else:
+            self.session.flush()
+
         self._chaintip = None
         log_block_event(hexlify(block.hash), 'Added', height=block.height, time=(block.firstseen or block.timestamp))
+        return block
 
     def orphan_blocks(self, first_height):
         chaintip = self.chaintip()
@@ -312,9 +323,10 @@ class DatabaseSession(object):
             block.height = None
             for txref in self.session.query(BlockTransaction).filter(BlockTransaction.block_id == block.id).all():
                 self.unconfirm_transaction(txref.transaction)
+            self.session.add(block)
             self.session.commit()
 
-    def unconfirm_transaction(transaction):
+    def unconfirm_transaction(self, transaction):
         log_tx_event(hexlify(transaction.txid), 'Unconf')
         transaction.confirmation = None
         for tx_output in transaction.txoutputs:
@@ -324,7 +336,7 @@ class DatabaseSession(object):
             tx_input.input.spentby_id = None
         self.session.add(transaction)
 
-    def check_need_import_transaction(self, txid, tx_resolver, coinbase_signatures=None):
+    def check_need_import_transaction(self, txid, tx_resolver, coinbase_signatures=None, commit=True):
         tx_id = self.transaction_internal_id(txid)
 
         if tx_id == None or coinbase_signatures is not None:
@@ -346,9 +358,9 @@ class DatabaseSession(object):
 
         if tx_id != None:
             return tx_id
-        return self.import_transaction(txid, txinfo, regular_inputs, coinbase_inputs).id
+        return self.import_transaction(txid, txinfo, regular_inputs, coinbase_inputs, commit=commit).id
 
-    def import_transaction(self, txid, txinfo, regular_inputs, coinbase_inputs):
+    def import_transaction(self, txid, txinfo, regular_inputs, coinbase_inputs, commit=True):
         if len(regular_inputs) > 0:
             log_tx_event(txid, 'Adding', inputs=len(regular_inputs), outputs=len(txinfo['vout']), via=txinfo['relayedby'] if 'relayedby' in txinfo else 'unknown')
         else:
@@ -402,8 +414,9 @@ class DatabaseSession(object):
 
         self.add_tx_mutations_info(tx)
 
-        log_tx_event(hexlify(tx.txid), 'Commit')
-        self.session.commit()
+        if commit:
+            log_tx_event(hexlify(tx.txid), 'Commit')
+            self.session.commit()
 
         if self.utxo_cache is not None:
             self.update_utxo_cache(txinfo['txid'], tx.id, utxos)
@@ -693,7 +706,6 @@ class DatabaseSession(object):
             self.session.commit()
 
     def next_dirty_address(self, check_for_id=1, random_address=False):
-        self.session.rollback()
         return self.session.query(Address).filter(Address.balance_dirty == check_for_id).order_by(Address.id if not random_address else sqlfunc.rand()).first()
 
     def get_address_balance(self, address):

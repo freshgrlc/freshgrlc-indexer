@@ -34,6 +34,9 @@ class DatabaseSession(object):
         self.session.flush()
         self.session.close()
 
+    def reset_session(self):
+        self.session.rollback()
+
     def chaintip(self):
         if self._chaintip is None:
             self._chaintip = self.session.query(Block).filter(Block.height != None).order_by(Block.height.desc()).first()
@@ -722,7 +725,19 @@ class DatabaseSession(object):
         skip = utxos > 5000
 
         if not skip:
-            self.session.execute('UPDATE `address` SET `balance_dirty` = \'0\', `balance` = (SELECT SUM(`txout`.`amount`) FROM `txout` JOIN `transaction` ON `txout`.`transaction` = `transaction`.`id` WHERE `txout`.`address` = :address_id AND `txout`.`spentby` IS NULL AND `transaction`.`confirmation` IS NOT NULL UNION SELECT \'0.0\' LIMIT 1) WHERE `address`.`id` = :address_id;', {
+            self.session.execute("""
+                UPDATE `address` SET `balance_dirty` = '0', `balance` = (
+                    SELECT SUM(`txout`.`amount`)
+                        FROM `txout`
+                            JOIN `transaction` ON `txout`.`transaction` = `transaction`.`id`
+                        WHERE `txout`.`address` = :address_id
+                            AND `txout`.`spentby` IS NULL
+                            AND `transaction`.`confirmation` IS NOT NULL
+                    UNION
+                    SELECT \'0.0\'
+                        LIMIT 1
+                ) WHERE `address`.`id` = :address_id;
+            """, {
                 'address_id': address.id
             })
         else:
@@ -743,16 +758,19 @@ class DatabaseSession(object):
         start_time = time()
 
         address.balance_dirty = 3
+        self.session.add(address)
         self.session.commit()
 
         balance = self.get_address_balance(address)
         self.session.expire(address)
+        self.session.rollback()
 
         if address.balance_dirty == 3:
             address.balance_dirty = 0
             address.balance = balance
-            log_balance_event(address_s, 'Updated', balance=str(balance), time='%d secs' % (time() - start_time))
+            self.session.add(address)
             self.session.commit()
+            log_balance_event(address_s, 'Updated', balance=str(balance), time='%d secs' % (time() - start_time))
         else:
             log_balance_event(address_s, 'Abort')
 

@@ -160,6 +160,7 @@ class Context(Configuration):
         return True
 
     def update_single_balance_background(self):
+        self.db.reset_session()
         dirty_address = self.db.next_dirty_address(check_for_id=2, random_address=True)
         if dirty_address is None:
             return False
@@ -302,6 +303,8 @@ def do_in_loop(operation, before_sleep=None, interval=1):
 
 def indexer(context):
     def main_loop():
+        context.db.reset_session()
+
         context.query_mempool()
         if context.sync_blocks():
             return True

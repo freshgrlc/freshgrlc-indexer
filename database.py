@@ -694,16 +694,16 @@ class DatabaseSession(object):
                 SELECT :tx_id, `address`, SUM(`amount`) FROM (
                     SELECT `txout`.`address`, `txout`.`amount` FROM `transaction`
                         JOIN `txout` ON `transaction`.`id` = `txout`.`transaction`
-                        WHERE `transaction`.`id` = :tx_id
-                    UNION ALL
+                    WHERE `transaction`.`id` = :tx_id
+                UNION ALL
                     SELECT `txout`.`address`, '0' - `txout`.`amount` FROM `transaction`
                         JOIN `txin` ON `transaction`.`id` = `txin`.`transaction`
                         JOIN `txout` ON `txin`.`input` = `txout`.`id`
-                        WHERE `transaction`.`id` = :tx_id
+                    WHERE `transaction`.`id` = :tx_id
                 ) temp
                     GROUP BY address;
             ''', {
-            'tx_id': tx.id
+                'tx_id': tx.id
         })
         if commit:
             self.session.commit()
@@ -712,7 +712,13 @@ class DatabaseSession(object):
         return self.session.query(Address).filter(Address.balance_dirty == check_for_id).order_by(Address.id if not random_address else sqlfunc.rand()).first()
 
     def get_address_balance(self, address):
-        return self.session.execute('SELECT SUM(`txout`.`amount`) FROM `txout` JOIN `transaction` ON `txout`.`transaction` = `transaction`.`id` WHERE `txout`.`address` = :address_id AND `txout`.`spentby` IS NULL AND `transaction`.`confirmation` IS NOT NULL UNION SELECT \'0.0\' LIMIT 1;', {
+        return self.session.execute('''
+            SELECT COALESCE(SUM(`txout`.`amount`), 0.0) FROM `txout`
+                JOIN `transaction` ON `txout`.`transaction` = `transaction`.`id`
+            WHERE `txout`.`address` = :address_id
+                AND `txout`.`spentby` IS NULL
+                AND `transaction`.`confirmation` IS NOT NULL;
+        ''', {
             'address_id': address.id
         }).first()[0]
 
@@ -727,7 +733,7 @@ class DatabaseSession(object):
         if not skip:
             self.session.execute("""
                 UPDATE `address` SET `balance_dirty` = '0', `balance` = (
-                    SELECT SUM(`txout`.`amount`)
+                    SELECT COALESCE(SUM(`txout`.`amount`), 0.0)
                         FROM `txout`
                             JOIN `transaction` ON `txout`.`transaction` = `transaction`.`id`
                         WHERE `txout`.`address` = :address_id

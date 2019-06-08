@@ -659,7 +659,7 @@ class DatabaseSession(object):
             if len(address) > 34:
                 addr_type = ADDRESS_TYPES.BECH32
 
-            if address in self.address_cache:
+            if self.address_cache is not None and address in self.address_cache:
                 db_address = self.address_cache[address]
             else:
                 db_address = self.session.query(Address).filter(Address.address == address).first()

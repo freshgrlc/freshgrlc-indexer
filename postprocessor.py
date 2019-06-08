@@ -4,9 +4,14 @@ from binascii import hexlify
 from datetime import datetime
 from decimal import Decimal
 from flask import request, Response
+from sqlalchemy.orm.collections import InstrumentedDict, InstrumentedList
 
 from config import Configuration
 from models import *
+
+
+LIST_LIKE_TYPES = (list, InstrumentedList)
+DICT_LIKE_TYPES = (dict, InstrumentedDict)
 
 
 def convert_date(date):
@@ -17,9 +22,9 @@ def convert_date(date):
 def json_preprocess_value(k, v, cls):
     if v == None:
         return None
-    if type(v) == list:
+    if type(v) in LIST_LIKE_TYPES:
         return [ json_preprocess_value(None, e, None) for e in v ]
-    if type(v) == dict:
+    if type(v) in DICT_LIKE_TYPES:
         return json_preprocess_dict(v)
 
     try:
@@ -195,13 +200,13 @@ class QueryDataPostProcessor(Configuration):
         return json_preprocess_dbobject(data, resolve_foreignkeys=self.resolve_foreignkeys, whitelist=self.filter_keys, reflinks=self._reflinks)
 
     def process(self, data):
-        if type(data) == list:
+        if type(data) in LIST_LIKE_TYPES:
             return self.ProcessedData([self._process(obj) for obj in data])
         return self.ProcessedData(self._process(data))
 
     def process_raw(self, data):
-        if type(data) == list:
+        if type(data) in LIST_LIKE_TYPES:
             return self.ProcessedData([json_preprocess_dict(obj) for obj in data])
-        elif type(data) == dict:
+        elif type(data) in DICT_LIKE_TYPES:
             return self.ProcessedData(json_preprocess_dict(data))
         return self.ProcessedData(data)

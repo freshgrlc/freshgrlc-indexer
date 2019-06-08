@@ -71,7 +71,7 @@ class DatabaseSession(object):
             return None
         return {
             'balance': float(address.balance),
-            'pending': self.address_pending_balance(address.address)
+            'pending': float(address.pending)
         }
 
     def address_balance(self, address):

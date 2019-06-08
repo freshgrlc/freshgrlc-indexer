@@ -1,6 +1,7 @@
 from binascii import hexlify
-from sqlalchemy import Column, ForeignKey, Integer, BigInteger, Float, String, CHAR, Binary, VARBINARY, DateTime
+from sqlalchemy import Column, ForeignKey, Integer, BigInteger, Float, String, CHAR, Binary, VARBINARY, DateTime, func as sqlfunc
 from sqlalchemy.orm import relationship
+from sqlalchemy.orm.session import Session
 from sqlalchemy.ext.declarative import declarative_base
 
 from config import Configuration
@@ -148,6 +149,21 @@ class Address(Base):
 
     mutations = relationship('Mutation', back_populates='address')
     pool = relationship('PoolAddress', back_populates='address', cascade='save-update, merge, delete')
+
+    @property
+    def pending(self):
+        pending = Session.object_session(self).query(
+            Address.id,
+            sqlfunc.sum(Mutation.amount)
+        ).join(
+            Address.mutations
+        ).join(
+            Mutation.transaction
+        ).filter(
+            Address.id == self.id,
+            Transaction.confirmation == None
+        ).all()[0][1]
+        return pending if pending != None else 0.0
 
 
 class Block(Base):

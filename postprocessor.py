@@ -4,6 +4,7 @@ from binascii import hexlify
 from datetime import datetime
 from decimal import Decimal
 from flask import request, Response
+from inspect import isclass
 from sqlalchemy.orm.collections import InstrumentedDict, InstrumentedList
 
 from config import Configuration
@@ -26,6 +27,9 @@ def json_preprocess_value(k, v, cls):
         return [ json_preprocess_value(None, e, None) for e in v ]
     if type(v) in DICT_LIKE_TYPES:
         return json_preprocess_dict(v)
+
+    if isclass(type(v)) and hasattr(v, 'API_DATA_FIELDS'):
+        return json_preprocess_dbobject(v)
 
     try:
         datatype = type(getattr(cls, k).type)
@@ -202,6 +206,8 @@ class QueryDataPostProcessor(Configuration):
     def process(self, data):
         if type(data) in LIST_LIKE_TYPES:
             return self.ProcessedData([self._process(obj) for obj in data])
+        if type(data) in DICT_LIKE_TYPES:
+            return self.ProcessedData({ k: self._process(obj) for k, obj in data.items() })
         return self.ProcessedData(self._process(data))
 
     def process_raw(self, data):

@@ -187,12 +187,23 @@ class Block(Base):
     API_DATA_FIELDS = [hash, height, size, timestamp, difficulty, firstseen, relayedby]
     POSTPROCESS_RESOLVE_FOREIGN_KEYS = [miner, 'Block.transactions', 'Transaction.mutations', 'Transaction.inputs', 'Transaction.outputs']
 
-    def __getattribute__(self, name):
-        if name == 'transactions':
-            return [ref.transaction for ref in self.transactionreferences]
-        if name == 'time':
-            return self.firstseen if self.firstseen != None else self.timestamp
-        return super(Block, self).__getattribute__(name)
+    @property
+    def transactions(self):
+        return [
+            result[1]
+            for result in Session.object_session(self).query(
+                BlockTransaction.id,
+                Transaction
+            ).join(
+                BlockTransaction.transaction
+            ).filter(
+                BlockTransaction.block_id == self.id
+            ).order_by(BlockTransaction.id).all()
+        ]
+
+    @property
+    def time(self):
+        return self.firstseen if self.firstseen != None else self.timestamp
 
 
 class BlockTransaction(Base):

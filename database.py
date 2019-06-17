@@ -86,10 +86,6 @@ class DatabaseSession(object):
             if coin_info is not None and coin_info['segwit_info'] is not None and coin_info['segwit_info']['addresstype'] == ADDRESS_TYPES.BASE58:
                 translations[(ADDRESS_TYPES.BASE58, coin_info['segwit_info']['address_version'])] = (p2pkh_address_type, p2pkh_address_version)
 
-        # Add bitcoin translations
-        translations[(ADDRESS_TYPES.BASE58, 0)] = (p2pkh_address_type, p2pkh_address_version)
-        translations[(ADDRESS_TYPES.BASE58, 5)] = (p2sh_address_type, p2sh_address_version)
-
         return translations
 
     def chaintip(self):
@@ -125,6 +121,7 @@ class DatabaseSession(object):
         if address == None:
             return None
         return {
+            'address': address.address,
             'balance': float(address.balance),
             'pending': float(address.pending)
         }

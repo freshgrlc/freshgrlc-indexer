@@ -6,7 +6,7 @@ from flask import Flask, jsonify, redirect, request, Response
 from flask_cors import cross_origin
 from werkzeug.datastructures import Headers
 
-from addrcodecs import decode_any_address, encode_base58_address
+from addrcodecs import decode_any_address, encode_base58_address, encode_bech32_address
 from config import Configuration
 from database import DatabaseIO
 from models import Block, _make_transaction_ref, ADDRESS_TYPES
@@ -29,6 +29,14 @@ def param_true(param_name, default=None):
     if param is None or param == '':
         return default
     return param.lower() == 'true' or param == '1'
+
+
+def encode_address(address_type, address_version, pubkeyhash):
+    if address_type == ADDRESS_TYPES.BASE58:
+        return encode_base58_address(address_version, pubkeyhash)
+    if address_type == ADDRESS_TYPES.BECH32 and BECH32_ADDRESS_PREFIX is not None:
+        return encode_bech32_address(BECH32_ADDRESS_PREFIX, pubkeyhash)
+    raise ValueError('Cannot re-encode to %s address' % address_type)
 
 
 def make404():
@@ -63,6 +71,22 @@ def address_info(address):
                 return make404()
 
             info['mutations'] = {'href': QueryDataPostProcessor.API_ENDPOINT + '/address/' + address + '/mutations/'}
+
+            # FIXME: Move this some place else?
+            if ADDRESS_TRANSLATIONS is not None and 'address' in info and info['address'] is not None:
+                aliases = []
+                try:
+                    address_type, address_version, pubkeyhash = decode_any_address(info['address'])
+                    for translation in ADDRESS_TRANSLATIONS.items():
+                        if translation[1] == (address_type, address_version):
+                            try:
+                                aliases.append(encode_address(translation[0][0], translation[0][1], pubkeyhash))
+                            except ValueError:
+                                pass
+                    info['aliases'] = aliases
+                except ValueError:
+                    pass
+
             return pp.process_raw(info).json()
 
 
@@ -345,13 +369,7 @@ def search(id):
         address_type, address_version, pubkeyhash = decode_any_address(id, bech32_prefix=BECH32_ADDRESS_PREFIX)
         if (address_type, address_version) in ADDRESS_TRANSLATIONS.keys():
             address_type, address_version = ADDRESS_TRANSLATIONS[(address_type, address_version)]
-
-            if address_type == ADDRESS_TYPES.BASE58:
-                id = encode_base58_address(address_version, pubkeyhash)
-            elif address_type == ADDRESS_TYPES.BECH32 and BECH32_ADDRESS_PREFIX is not None:
-                id = encode_bech32_address(pubkeyhash, BECH32_ADDRESS_PREFIX)
-            else:
-                raise ValueError('Cannot re-encode to %s address % address_type')
+            id = encode_address(address_type, address_version, pubkeyhash)
     except ValueError:
         pass
 

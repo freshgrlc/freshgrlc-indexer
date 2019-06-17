@@ -1,7 +1,7 @@
 from gevent import monkey; monkey.patch_all()
 
 from datetime import datetime
-from flask import Flask, request, Response
+from flask import Flask, jsonify, request, Response
 from flask_cors import cross_origin
 from werkzeug.datastructures import Headers
 
@@ -25,6 +25,15 @@ def param_true(param_name, default=None):
     return param.lower() == 'true' or param == '1'
 
 
+def make404():
+    return jsonify(None), 404
+
+
+@webapp.errorhandler(404)
+def page_not_found(e):
+    return jsonify(error=404, text=str(e)), 404
+
+
 @webapp.route('/events/subscribe')
 @cross_origin()
 def subscribe():
@@ -44,6 +53,9 @@ def address_info(address):
     with db.new_session() as session:
         with QueryDataPostProcessor() as pp:
             info = session.address_info(address)
+            if info == None:
+                return make404()
+
             info['mutations'] = {'href': QueryDataPostProcessor.API_ENDPOINT + '/address/' + address + '/mutations/'}
             return pp.process_raw(info).json()
 
@@ -53,7 +65,11 @@ def address_info(address):
 def address_balance(address):
     with db.new_session() as session:
         with QueryDataPostProcessor() as pp:
-            return pp.process_raw(session.address_balance(address)).json()
+            balance = session.address_balance(address)
+            if balance == None:
+                return make404()
+
+            return pp.process_raw(balance).json()
 
 
 @webapp.route('/address/<address>/pending/')
@@ -61,7 +77,11 @@ def address_balance(address):
 def address_pending(address):
     with db.new_session() as session:
         with QueryDataPostProcessor() as pp:
-            return pp.process_raw(session.address_pending_balance(address)).json()
+            pending_balance = session.address_pending_balance(address)
+            if pending_balance == None:
+                return make404()
+
+            return pp.process_raw(pending_balance).json()
 
 
 @webapp.route('/address/<address>/mutations/')
@@ -107,7 +127,12 @@ def block(blockid):
             pp.reflink('outputs', '/transactions/<Transaction.txid>/outputs')
             pp.autoexpand()
             pp.reflink('block', '/blocks/<query:transaction.block.hash>/', ['hash', 'height'])
-            return pp.process(session.block(blockid)).json()
+
+            block = session.block(blockid)
+            if block == None:
+                return make404()
+
+            return pp.process(block).json()
 
 
 @webapp.route('/blocks/<blockid>/miner/')
@@ -117,7 +142,12 @@ def blockminer(blockid):
         with QueryDataPostProcessor() as pp:
             pp.resolve_keys(Block.miner)
             pp.reflink('block', '/blocks/<query:transaction.block.hash>/', ['hash', 'height'])
-            return pp.process(session.block(blockid))['miner'].json()
+
+            block = session.block(blockid)
+            if block == None:
+                return make404()
+
+            return pp.process(block)['miner'].json()
 
 
 @webapp.route('/blocks/<blockid>/transactions/')
@@ -131,7 +161,12 @@ def blocktransactions(blockid):
             pp.autoexpand()
             pp.resolve_keys('Block.transactions', 'Transaction.block', 'Transaction.mutations', 'Transaction.inputs', 'Transaction.outputs')
             pp.reflink('block', '/blocks/<query:transaction.block.hash>/', ['hash', 'height'])
-            return pp.process(session.block(blockid))['transactions'].json()
+
+            block = session.block(blockid)
+            if block == None:
+                return make404()
+
+            return pp.process(block)['transactions'].json()
 
 
 @webapp.route('/transactions/')
@@ -172,7 +207,11 @@ def transaction(txid):
             pp.autoexpand()
             pp.reflink('transactions', '/blocks/<query:transaction.block.hash>/transactions/')
 
-            return pp.process(session.transaction(txid, include_confirmation_info=True)).json()
+            transaction = session.transaction(txid, include_confirmation_info=True)
+            if transaction == None:
+                return make404()
+
+            return pp.process(transaction).json()
 
 
 @webapp.route('/transactions/<txid>/mutations/')
@@ -180,7 +219,11 @@ def transaction(txid):
 def transaction_mutations(txid):
     with db.new_session() as session:
         with QueryDataPostProcessor() as pp:
-            return pp.process_raw(session.transaction(txid, include_confirmation_info=False).mutations).json()
+            transaction = session.transaction(txid, include_confirmation_info=False)
+            if transaction == None:
+                return make404()
+
+            return pp.process_raw(transaction.mutations).json()
 
 
 @webapp.route('/transactions/<txid>/inputs/')
@@ -188,7 +231,11 @@ def transaction_mutations(txid):
 def transaction_inputs(txid):
     with db.new_session() as session:
         with QueryDataPostProcessor() as pp:
-            return pp.process_raw(session.transaction(txid, include_confirmation_info=False).inputs).json()
+            transaction = session.transaction(txid, include_confirmation_info=False)
+            if transaction == None:
+                return make404()
+
+            return pp.process_raw(transaction.inputs).json()
 
 
 @webapp.route('/transactions/<txid>/inputs/<index>/')
@@ -196,7 +243,11 @@ def transaction_inputs(txid):
 def transaction_input(txid, index):
     with db.new_session() as session:
         with QueryDataPostProcessor() as pp:
-            return pp.process_raw(session.transaction(txid, include_confirmation_info=False).inputs[int(index)]).json()
+            transaction = session.transaction(txid, include_confirmation_info=False)
+            if transaction == None:
+                return make404()
+
+            return pp.process_raw(transaction.inputs[int(index)]).json()
 
 
 @webapp.route('/transactions/<txid>/outputs/')
@@ -204,7 +255,11 @@ def transaction_input(txid, index):
 def transaction_outputs(txid):
     with db.new_session() as session:
         with QueryDataPostProcessor() as pp:
-            return pp.process_raw(session.transaction(txid, include_confirmation_info=False).outputs).json()
+            transaction = session.transaction(txid, include_confirmation_info=False)
+            if transaction == None:
+                return make404()
+
+            return pp.process_raw(transaction.outputs).json()
 
 
 @webapp.route('/transactions/<txid>/outputs/<index>/')
@@ -212,7 +267,11 @@ def transaction_outputs(txid):
 def transaction_output(txid, index):
     with db.new_session() as session:
         with QueryDataPostProcessor() as pp:
-            return pp.process_raw(session.transaction(txid, include_confirmation_info=False).outputs[int(index)]).json()
+            transaction = session.transaction(txid, include_confirmation_info=False)
+            if transaction == None:
+                return make404()
+
+            return pp.process_raw(transaction.outputs[int(index)]).json()
 
 
 @webapp.route('/networkstats/')

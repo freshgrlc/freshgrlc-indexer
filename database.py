@@ -119,7 +119,7 @@ class DatabaseSession(object):
         if len(txid) == 64:
             txid = unhexlify(txid)
         result = self.query_transactions(include_confirmation_info=include_confirmation_info).filter(Transaction.txid == txid).first()
-        return result if not include_confirmation_info else result[0]
+        return result if not include_confirmation_info else result[0] if result != None else None
 
     def transaction_internal_id(self, txid):
         _txid = unhexlify(txid)

@@ -109,6 +109,10 @@ def address_friendly_name(address):
     return 'Unknown <' + address.raw + '>'
 
 
+def make_witness_v0_p2wpkh(pubkeyhash):
+    return ' '.join(['0', pubkeyhash])
+
+
 def _make_transaction_ref(txid):
     return {'txid': txid, 'href': Configuration.API_ENDPOINT + '/transactions/' + txid + '/'}
 
@@ -371,7 +375,7 @@ class Transaction(Base):
                 'amount':   output.amount,
                 'type':     output.type,
                 'address':  address_friendly_name(output.address),
-                'script':   output.address.raw if output.address.type != ADDRESS_TYPES.DATA else None,
+                'script':   output.script,
                 'spentby':  make_transaction_input_ref(output.spentby) if output.spentby != None else None
             }) for output in self.txoutputs
         ])
@@ -419,4 +423,26 @@ class TransactionOutput(Base):
     @type.setter
     def type(self, type):
         self.type_id = TXOUT_TYPES.internal_id(type)
+
+    @property
+    def script(self):
+        if self.address.type == ADDRESS_TYPES.DATA:
+            return None
+
+        if self.type != TXOUT_TYPES.P2WPKH or self.address.type == ADDRESS_TYPES.BECH32:
+            return self.address.raw
+
+        #
+        #   Dealing with a p2wpkh output but coin uses same address for both transaction types,
+        #   hence script saved on address object is legacy script, so we need to convert.
+        #
+        #   We'll just assume we need to convert from normal p2pkh script to witness v0 program.
+        #
+        opcodes = self.address.raw.split(' ') if self.address.raw != None else []
+
+        if len(opcodes) == 5 and opcodes[:2] + opcodes[3:] == [ 'OP_DUP', 'OP_HASH160', 'OP_EQUALVERIFY', 'OP_CHECKSIG' ]:
+            return make_witness_v0_p2wpkh(opcodes[2])
+
+        # Not sure, just pretend everything is fine
+        return self.address.raw
 

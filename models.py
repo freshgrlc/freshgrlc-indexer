@@ -318,46 +318,63 @@ class Transaction(Base):
     API_DATA_FIELDS = [txid, size, fee, totalvalue, firstseen, 'Transaction.confirmed', 'Transaction.coinbase']
     POSTPROCESS_RESOLVE_FOREIGN_KEYS = ['Transaction.block', 'Transaction.mutations', 'Transaction.inputs', 'Transaction.outputs']
 
-    def __getattribute__(self, name):
-        if name == 'confirmed':
-            return self.confirmation_id != None
-        if name == 'coinbase':
-            return len(self.coinbaseinfo) > 0
-        if name == 'block':
-            return self.confirmation.block if self.confirmation_id != None else None
-        if name == 'block_id':
-            return self.confirmation.block_id if self.confirmation_id != None else None
-        if name == 'mutations':
-            mutations = [ (address_friendly_name(m.address), m.amount) for m in self.address_mutations ]
-            return {
-                'inputs': dict([ (m[0], -m[1]) for m in filter(lambda m: m[1] < 0.0, mutations) ]),
-                'outputs': dict(filter(lambda m: m[1] > 0.0, mutations))
-            }
-        if name == 'inputs':
-            return dict([
-                (input.index, {
-                    'amount':   input.input.amount,
-                    'type':     TXOUT_TYPES.resolve(input.input.type),
-                    'address':  address_friendly_name(input.input.address),
-                    'spends':   make_transaction_output_ref(input.input)
-                }) for input in self.txinputs
-            ])
-        if name == 'outputs':
-            return dict([
-                (output.index, {
-                    'amount':   output.amount,
-                    'type':     TXOUT_TYPES.resolve(output.type),
-                    'address':  address_friendly_name(output.address),
-                    'script':   output.address.raw if ADDRESS_TYPES.resolve(output.address.type) != ADDRESS_TYPES.DATA else None,
-                    'spentby':  make_transaction_input_ref(output.spentby) if output.spentby != None else None
-                }) for output in self.txoutputs
-            ])
-        if name == 'time':
-            if self.firstseen != None:
-                return self.firstseen
-            block = self.block
-            return block.time if block != None else None
-        return super(Transaction, self).__getattribute__(name)
+    @property
+    def confirmed(self):
+        return self.confirmation_id != None
+
+    @property
+    def coinbase(self):
+        return len(self.coinbaseinfo) > 0
+
+    @property
+    def block(self):
+        return self.confirmation.block if self.confirmation_id != None else None
+
+    @property
+    def block_id(self):
+        return self.confirmation.block_id if self.confirmation_id != None else None
+
+    @property
+    def block_id(self):
+        return self.confirmation.block_id if self.confirmation_id != None else None
+
+    @property
+    def mutations(self):
+        mutations = [ (address_friendly_name(m.address), m.amount) for m in self.address_mutations ]
+        return {
+            'inputs': dict([ (m[0], -m[1]) for m in filter(lambda m: m[1] < 0.0, mutations) ]),
+            'outputs': dict(filter(lambda m: m[1] > 0.0, mutations))
+        }
+
+    @property
+    def inputs(self):
+        return dict([
+            (input.index, {
+                'amount':   input.input.amount,
+                'type':     TXOUT_TYPES.resolve(input.input.type),
+                'address':  address_friendly_name(input.input.address),
+                'spends':   make_transaction_output_ref(input.input)
+            }) for input in self.txinputs
+        ])
+
+    @property
+    def outputs(self):
+        return dict([
+            (output.index, {
+                'amount':   output.amount,
+                'type':     TXOUT_TYPES.resolve(output.type),
+                'address':  address_friendly_name(output.address),
+                'script':   output.address.raw if ADDRESS_TYPES.resolve(output.address.type) != ADDRESS_TYPES.DATA else None,
+                'spentby':  make_transaction_input_ref(output.spentby) if output.spentby != None else None
+            }) for output in self.txoutputs
+        ])
+
+    @property
+    def time(self):
+        if self.firstseen != None:
+            return self.firstseen
+        block = self.block
+        return block.time if block != None else None
 
 
 class TransactionInput(Base):

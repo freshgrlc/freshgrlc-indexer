@@ -463,7 +463,7 @@ class DatabaseSession(object):
             utxo = TransactionOutput()
             utxo.transaction_id = internal_tx_id
             utxo.index = outp['n']
-            utxo.type = TXOUT_TYPES.internal_id(TXOUT_TYPES.from_rpcapi_type(outp['scriptPubKey']['type']))
+            utxo.type = TXOUT_TYPES.from_rpcapi_type(outp['scriptPubKey']['type'])
             utxo.amount = outp['value']
 
             utxo.address_id = address_id_mappings[outp['n']].id
@@ -482,7 +482,7 @@ class DatabaseSession(object):
         if self.utxo_cache is None:
             return
         for utxo in utxos:
-            if TXOUT_TYPES.resolve(utxo.type) != TXOUT_TYPES.RAW:
+            if utxo.type != TXOUT_TYPES.RAW:
                 self.utxo_cache[txid + '_' + str(utxo.index)] = (internal_tx_id, utxo.id, utxo.amount)
 
     def lookup_input_utxos_from_utxo_cache(self, inputs):
@@ -677,7 +677,7 @@ class DatabaseSession(object):
         if db_address == None:
             db_address = Address()
             db_address.address = address
-            db_address.type = ADDRESS_TYPES.internal_id(addr_type)
+            db_address.type = addr_type
             db_address.raw = raw
 
             self.session.add(db_address)

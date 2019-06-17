@@ -222,7 +222,7 @@ class Context(Configuration):
             Address
         ).filter(
             Address.id > self.migration_last_id,
-            Address.type.in_([ 0, 1 ]),
+            Address.type_id.in_([ 0, 1 ]),
             Address.raw == None
         ).first()
 

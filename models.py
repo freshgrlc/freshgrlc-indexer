@@ -26,12 +26,12 @@ class ADDRESS_TYPES:
         ]
 
     @classmethod
-    def internal_id(cls, txtype):
-        if txtype == cls.RAW:
+    def internal_id(cls, address_type):
+        if address_type == cls.RAW:
             return -1
 
         try:
-            return cls.all().index(txtype)
+            return cls.all().index(address_type)
         except ValueError:
             return -1
 
@@ -100,12 +100,11 @@ class TXOUT_TYPES:
 
 
 def address_friendly_name(address):
-    address_type = ADDRESS_TYPES.resolve(address.type)
     if address.address != None:
         return address.address
-    if address_type == ADDRESS_TYPES.RAW:
+    if address.type == ADDRESS_TYPES.RAW:
         return 'Script: ' + address.raw
-    if address_type == ADDRESS_TYPES.DATA:
+    if address.type == ADDRESS_TYPES.DATA:
         return 'Data: ' + address.raw
     return 'Unknown <' + address.raw + '>'
 
@@ -141,7 +140,7 @@ class Address(Base):
     __tablename__ = 'address'
 
     id = Column(Integer, primary_key=True)
-    type = Column(Integer)
+    type_id = Column('type', Integer)
     address = Column(String(64), unique=True)
     raw = Column(String(256))
     balance = Column(Integer)
@@ -149,6 +148,14 @@ class Address(Base):
 
     mutations = relationship('Mutation', back_populates='address')
     pool = relationship('PoolAddress', back_populates='address', cascade='save-update, merge, delete')
+
+    @property
+    def type(self):
+        return ADDRESS_TYPES.resolve(self.type_id)
+
+    @type.setter
+    def type(self, type):
+        self.type_id = ADDRESS_TYPES.internal_id(type)
 
     @property
     def pending(self):
@@ -351,7 +358,7 @@ class Transaction(Base):
         return dict([
             (input.index, {
                 'amount':   input.input.amount,
-                'type':     TXOUT_TYPES.resolve(input.input.type),
+                'type':     input.input.type,
                 'address':  address_friendly_name(input.input.address),
                 'spends':   make_transaction_output_ref(input.input)
             }) for input in self.txinputs
@@ -362,9 +369,9 @@ class Transaction(Base):
         return dict([
             (output.index, {
                 'amount':   output.amount,
-                'type':     TXOUT_TYPES.resolve(output.type),
+                'type':     output.type,
                 'address':  address_friendly_name(output.address),
-                'script':   output.address.raw if ADDRESS_TYPES.resolve(output.address.type) != ADDRESS_TYPES.DATA else None,
+                'script':   output.address.raw if output.address.type != ADDRESS_TYPES.DATA else None,
                 'spentby':  make_transaction_input_ref(output.spentby) if output.spentby != None else None
             }) for output in self.txoutputs
         ])
@@ -395,7 +402,7 @@ class TransactionOutput(Base):
     id = Column(BigInteger, primary_key=True)
     transaction_id = Column('transaction', BigInteger, ForeignKey('transaction.id'), index=True)
     index = Column(Integer)
-    type = Column(Integer)
+    type_id = Column('type', Integer)
     address_id = Column('address', Integer, ForeignKey('address.id'), index=True)
     amount = Column(Float(asdecimal=True))
     spentby_id = Column('spentby', BigInteger, ForeignKey('txin.id'), unique=True)
@@ -404,4 +411,12 @@ class TransactionOutput(Base):
     address = relationship('Address')
     spenders = relationship('TransactionInput', back_populates='input', foreign_keys=[TransactionInput.input_id])
     spentby = relationship('TransactionInput', foreign_keys=[spentby_id])
+
+    @property
+    def type(self):
+        return TXOUT_TYPES.resolve(self.type_id)
+
+    @type.setter
+    def type(self, type):
+        self.type_id = TXOUT_TYPES.internal_id(type)
 

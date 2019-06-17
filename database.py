@@ -7,6 +7,8 @@ from sqlalchemy.orm import sessionmaker
 from sys import version_info
 from time import time
 
+import coininfo
+from addrcodecs import decode_any_address
 from models import *
 from postprocessor import convert_date
 from logger import *
@@ -36,6 +38,59 @@ class DatabaseSession(object):
 
     def reset_session(self):
         self.session.rollback()
+
+    def decode_address_for(self, txout_type):
+        txout = self.session.query(
+            TransactionOutput
+        ).filter(
+            TransactionOutput.type_id == TXOUT_TYPES.internal_id(txout_type)
+        ).first()
+
+        if txout != None:
+            try:
+                return tuple(list(decode_any_address(txout.address.address))[:2])
+            except ValueError:
+                pass
+        return None, None
+
+    def detect_bech32_address_prefix(self):
+        address = self.session.query(
+            Address
+        ).filter(
+            Address.type_id == ADDRESS_TYPES.internal_id(ADDRESS_TYPES.BECH32)
+        ).first()
+
+        if address != None:
+            return address.address.split('1')[0]
+
+        _, p2pkh_address_version = self.decode_address_for(TXOUT_TYPES.P2PKH)
+        _, p2sh_address_version = self.decode_address_for(TXOUT_TYPES.P2SH)
+
+        coin_info = coininfo.by_address_versions(p2pkh_address_version, p2sh_address_version)
+        if coin_info is None:
+            return None
+
+        return coin_info['bech32_prefix']
+
+    def detect_address_translations(self):
+        p2pkh_address_type, p2pkh_address_version = self.decode_address_for(TXOUT_TYPES.P2PKH)
+        p2sh_address_type, p2sh_address_version = self.decode_address_for(TXOUT_TYPES.P2SH)
+        p2wpkh_address_type, p2wpkh_address_version = self.decode_address_for(TXOUT_TYPES.P2WPKH)
+
+        translations = {}
+
+        if p2wpkh_address_type is not None and p2pkh_address_type == p2wpkh_address_type and p2pkh_address_version == p2wpkh_address_version:
+            translations[(ADDRESS_TYPES.BECH32, 0)] = (p2pkh_address_type, p2pkh_address_version)
+
+            coin_info = coininfo.by_address_versions(p2pkh_address_version, p2sh_address_version)
+            if coin_info is not None and coin_info['segwit_info'] is not None and coin_info['segwit_info']['addresstype'] == ADDRESS_TYPES.BASE58:
+                translations[(ADDRESS_TYPES.BASE58, coin_info['segwit_info']['address_version'])] = (p2pkh_address_type, p2pkh_address_version)
+
+        # Add bitcoin translations
+        translations[(ADDRESS_TYPES.BASE58, 0)] = (p2pkh_address_type, p2pkh_address_version)
+        translations[(ADDRESS_TYPES.BASE58, 5)] = (p2sh_address_type, p2sh_address_version)
+
+        return translations
 
     def chaintip(self):
         if self._chaintip is None:

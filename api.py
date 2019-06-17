@@ -1,13 +1,15 @@
 from gevent import monkey; monkey.patch_all()
 
+from binascii import hexlify
 from datetime import datetime
-from flask import Flask, jsonify, request, Response
+from flask import Flask, jsonify, redirect, request, Response
 from flask_cors import cross_origin
 from werkzeug.datastructures import Headers
 
+from addrcodecs import decode_any_address, encode_base58_address
 from config import Configuration
 from database import DatabaseIO
-from models import Block, _make_transaction_ref
+from models import Block, _make_transaction_ref, ADDRESS_TYPES
 from postprocessor import QueryDataPostProcessor
 from eventgen import IndexerEventStream
 
@@ -16,6 +18,10 @@ webapp = Flask('indexer-api')
 db = DatabaseIO(Configuration.DATABASE_URL, debug=Configuration.DEBUG_SQL)
 
 stream = IndexerEventStream(db, poll_interval=(2 if not Configuration.DEBUG_SQL else 30))
+
+with db.new_session() as session:
+    ADDRESS_TRANSLATIONS = session.detect_address_translations()
+    BECH32_ADDRESS_PREFIX = session.detect_bech32_address_prefix()
 
 
 def param_true(param_name, default=None):
@@ -321,3 +327,44 @@ def total_coins():
     with db.new_session() as session:
         with QueryDataPostProcessor() as pp:
             return pp.process_raw(session.total_coins_info()).json()
+
+
+@webapp.route('/search/<id>')
+@cross_origin()
+def search(id):
+    id = str(id.encode('utf8'))
+    pubkeyhash = None
+    id_int = None
+
+    try:
+        id_int = int(id)
+    except ValueError:
+        pass
+
+    try:
+        address_type, address_version, pubkeyhash = decode_any_address(id, bech32_prefix=BECH32_ADDRESS_PREFIX)
+        if (address_type, address_version) in ADDRESS_TRANSLATIONS.keys():
+            address_type, address_version = ADDRESS_TRANSLATIONS[(address_type, address_version)]
+
+            if address_type == ADDRESS_TYPES.BASE58:
+                id = encode_base58_address(address_version, pubkeyhash)
+            elif address_type == ADDRESS_TYPES.BECH32 and BECH32_ADDRESS_PREFIX is not None:
+                id = encode_bech32_address(pubkeyhash, BECH32_ADDRESS_PREFIX)
+            else:
+                raise ValueError('Cannot re-encode to %s address % address_type')
+    except ValueError:
+        pass
+
+    with db.new_session() as session:
+        if pubkeyhash is not None:
+            if session.address_info(id) != None:
+                return redirect('/address/%s/' % id)
+        if len(id) == 32*2:
+            if session.transaction(id) != None:
+                return redirect('/transactions/%s/' % id)
+        if len(id) == 32*2 or id_int is not None:
+            block = session.block(id)
+            if block != None:
+                return redirect('/blocks/%s/' % hexlify(block.hash))
+
+    return make404()

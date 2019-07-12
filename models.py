@@ -195,7 +195,7 @@ class Block(Base):
     coinbaseinfo = relationship('CoinbaseInfo', back_populates='block', uselist=False)
     transactionreferences = relationship('BlockTransaction', back_populates='block', cascade='save-update, merge, delete')
 
-    API_DATA_FIELDS = [hash, height, size, timestamp, difficulty, firstseen, relayedby]
+    API_DATA_FIELDS = [hash, height, size, timestamp, difficulty, firstseen, relayedby, 'Block.totaltransacted', 'Block.totalfees', 'Block.miningreward']
     POSTPROCESS_RESOLVE_FOREIGN_KEYS = [miner, 'Block.transactions', 'Transaction.mutations', 'Transaction.inputs', 'Transaction.outputs']
 
     @property
@@ -215,6 +215,18 @@ class Block(Base):
     @property
     def time(self):
         return self.firstseen if self.firstseen != None else self.timestamp
+
+    @property
+    def totalfees(self):
+        return self.totalfee
+
+    @property
+    def miningreward(self):
+        return self.coinbaseinfo.newcoins if self.coinbaseinfo != None else None
+
+    @property
+    def totaltransacted(self):
+        return sum([ tx.totalvalue for tx in filter(lambda tx: not tx.coinbase, self.transactions) ])
 
 
 class BlockTransaction(Base):

@@ -192,7 +192,7 @@ class Block(Base):
     miner_id = Column('miner', Integer, ForeignKey('pool.id'), index=True)
 
     miner = relationship('Pool')
-    coinbaseinfo = relationship('CoinbaseInfo', back_populates='block')
+    coinbaseinfo = relationship('CoinbaseInfo', back_populates='block', uselist=False)
     transactionreferences = relationship('BlockTransaction', back_populates='block', cascade='save-update, merge, delete')
 
     API_DATA_FIELDS = [hash, height, size, timestamp, difficulty, firstseen, relayedby]
@@ -238,8 +238,8 @@ class CoinbaseInfo(Base):
     signature = Column(String(32), index=True)
     mainoutput_id = Column('mainoutput', BigInteger, ForeignKey('txout.id'), index=True)
 
-    block = relationship('Block', back_populates='coinbaseinfo')
-    transaction = relationship('Transaction', back_populates='coinbaseinfo')
+    block = relationship('Block', back_populates='coinbaseinfo', uselist=False)
+    transaction = relationship('Transaction', back_populates='coinbaseinfo', uselist=False)
     mainoutput = relationship('TransactionOutput')
 
 
@@ -321,7 +321,7 @@ class Transaction(Base):
 
     confirmation = relationship('BlockTransaction', foreign_keys=[confirmation_id])
     blockreferences = relationship('BlockTransaction', back_populates='transaction', foreign_keys=[BlockTransaction.transaction_id], cascade='save-update, merge, delete')
-    coinbaseinfo = relationship('CoinbaseInfo', back_populates='transaction')
+    coinbaseinfo = relationship('CoinbaseInfo', back_populates='transaction', uselist=False)
     txinputs = relationship('TransactionInput', back_populates='transaction', cascade='save-update, merge, delete')
     txoutputs = relationship('TransactionOutput', back_populates='transaction', cascade='save-update, merge, delete')
     address_mutations = relationship('Mutation', back_populates='transaction', cascade='save-update, merge, delete')
@@ -335,7 +335,7 @@ class Transaction(Base):
 
     @property
     def coinbase(self):
-        return len(self.coinbaseinfo) > 0
+        return self.coinbaseinfo != None
 
     @property
     def block(self):

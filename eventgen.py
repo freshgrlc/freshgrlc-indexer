@@ -12,17 +12,19 @@ class Mempool(object):
         self.pool = None
         spawn(self.getinitdata)
 
-    def getinitdata(self):
+    def getinitdata(self, set_dirty=True):
         with self.db.new_session() as session:
             with QueryDataPostProcessor() as pp:
                 self.pool = pp.process(session.mempool()).data
-        self.dirty = True
+        if set_dirty:
+            self.dirty = True
 
     def process_block(self, block):
+        # Since the possibility of block orphaning complicates mempool sync a lot
+        # it is a lot easier to just requery the database whenever a block comes in.
         lastlen = len(self.pool)
-        self.pool = list(filter(lambda tx: tx['txid'] not in [hexlify(tx.txid) for tx in block.transactions], self.pool))
-        if len(self.pool) != lastlen:
-            self.dirty = True
+        self.getinitdata(set_dirty=False)
+        self.dirty = len(self.pool) != lastlen
 
     def process_new_tx(self, tx):
         if tx.confirmed:

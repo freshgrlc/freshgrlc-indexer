@@ -128,7 +128,7 @@ def json_preprocess_dbobject(obj, resolve_foreignkeys=None, whitelist=None, refl
 
 class QueryDataPostProcessor(Configuration):
     DEFAULT_OBJECTS_PER_PAGE = 20
-    MAX_OBJECTS_PER_PAGE = 100
+    MAX_OBJECTS_PER_PAGE = 1000
 
     class ProcessedData(object):
         def __init__(self, data):
@@ -155,11 +155,14 @@ class QueryDataPostProcessor(Configuration):
     def __exit__(self, exc_type, exc_value, traceback):
         pass
 
-    def pagination(self, backwards_indexes=False, tipresolver=None):
+    def pagination(self, backwards_indexes=False, tipresolver=None, allow_interval=False):
         start = int(request.args.get('start') or (-self.DEFAULT_OBJECTS_PER_PAGE if backwards_indexes else 0))
         limit = int(request.args.get('limit') or self.DEFAULT_OBJECTS_PER_PAGE)
+        interval = int(request.args.get('interval')) if allow_interval and request.args.get('interval') else None
+        if interval <= 0:
+            interval = None
 
-        if limit <= 0 or limit > self.MAX_OBJECTS_PER_PAGE:
+        if limit <= 0 or limit > (self.MAX_OBJECTS_PER_PAGE if interval is None else self.MAX_OBJECTS_PER_PAGE * interval):
             limit = self.MAX_OBJECTS_PER_PAGE
 
         if start < 0:
@@ -172,6 +175,7 @@ class QueryDataPostProcessor(Configuration):
         self.start = start
         self.limit = limit
         self.end = start + limit
+        self.interval = interval
         return self
 
     def filter(self, *args):

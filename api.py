@@ -338,11 +338,10 @@ def poolstats():
 @webapp.route('/richlist/')
 @cross_origin()
 def richlist():
-    limit = request.args.get('limit')
-    limit = int(limit) if limit is not None else 100
     with db.new_session() as session:
         with QueryDataPostProcessor() as pp:
-            return pp.process_raw(session.richlist(limit=limit)).json()
+            pp.pagination()
+            return pp.process_raw(session.richlist(start=pp.start, limit=pp.limit)).json()
 
 
 @webapp.route('/coins/')

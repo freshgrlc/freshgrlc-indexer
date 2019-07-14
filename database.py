@@ -289,8 +289,8 @@ class DatabaseSession(object):
     def total_coins_info(self):
         return { 'total': { 'released': self.total_coins_released(), 'current': self.total_coins_in_addresses() }}
 
-    def richlist(self, limit):
-        return [ { 'address': v[0], 'balance': v[1] } for v in self.session.query(Address.address, Address.balance).order_by(Address.balance.desc()).limit(limit).all() ]
+    def richlist(self, limit, start=0):
+        return [ { 'address': v[0], 'balance': v[1] } for v in self.session.query(Address.address, Address.balance).order_by(Address.balance.desc()).limit(limit).offset(start).all() ]
 
     def mempool(self):
         return self.session.query(Transaction).filter(Transaction.confirmation_id == None).filter(Transaction.coinbaseinfo == None).order_by(Transaction.id.desc()).all()

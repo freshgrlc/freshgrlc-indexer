@@ -134,7 +134,7 @@ def address_mutations(address):
 def blocks():
     with db.new_session() as session:
         with QueryDataPostProcessor() as pp:
-            pp.pagination(backwards_indexes=True, tipresolver=(lambda: session.chaintip().height + 1))
+            pp.pagination(backwards_indexes=True, tipresolver=(lambda: session.chaintip().height + 1), allow_interval=True)
             pp.baseurl('/blocks/<Block.hash>/')
             pp.reflinks('miner', 'transactions')
             pp.reflink('mutations', '/transactions/<Transaction.txid>/mutations')
@@ -142,7 +142,7 @@ def blocks():
             pp.reflink('outputs', '/transactions/<Transaction.txid>/outputs')
             pp.autoexpand()
             pp.reflink('block', '/blocks/<query:transaction.block.hash>/', ['hash', 'height'])
-            return pp.process(session.blocks(pp.start, pp.limit)).json()
+            return pp.process(session.blocks(pp.start, pp.limit, pp.interval)).json()
 
 
 @webapp.route('/blocks/<blockid>/')

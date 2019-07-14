@@ -104,8 +104,10 @@ class DatabaseSession(object):
 
         return self.session.query(Block).filter(Block.hash == (unhexlify(blockid) if len(blockid) == 64 else blockid)).first()
 
-    def blocks(self, start_height, limit):
-        return self.session.query(Block).filter(Block.height >= start_height).order_by(Block.height).limit(limit).all()
+    def blocks(self, start_height, limit, interval=None):
+        if interval is None:
+            return self.session.query(Block).filter(Block.height >= start_height).order_by(Block.height).limit(limit).all()
+        return self.session.query(Block).filter(Block.height >= start_height, Block.height % interval == start_height % interval).order_by(Block.height).limit(limit).all()
 
     def blockcount(self, range=None):
         query = self.session.query(sqlfunc.count(Block.id))

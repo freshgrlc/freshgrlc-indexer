@@ -17,6 +17,89 @@ from logger import *
 INTEGER_TYPES = [int] if version_info[0] > 2 else [int, long]
 
 
+class Cache(object):
+    ALL_IDS = [
+        CACHE_IDS.TOTAL_TRANSACTIONS,
+        CACHE_IDS.TOTAL_BLOCKS,
+        CACHE_IDS.TOTAL_FEES,
+        CACHE_IDS.TOTAL_COINS_RELEASED
+    ]
+    BLOCK_CACHE_IDS = [
+        CACHE_IDS.TOTAL_BLOCKS,
+        CACHE_IDS.TOTAL_FEES,
+        CACHE_IDS.TOTAL_COINS_RELEASED
+    ]
+    TRANSACTION_CACHE_IDS = [
+        CACHE_IDS.TOTAL_TRANSACTIONS
+    ]
+
+    def __init__(self, db):
+        self.db = db
+
+    def get(self, id):
+        return self.db.session.query(CachedValue).filter(CachedValue.id == CACHE_IDS.TOTAL_TRANSACTIONS).first()
+
+    def set(self, id, value, flush=True, commit=False):
+        entry = self.get(id)
+        entry.value = value
+        entry.valid = True
+        self.db.session.add(entry)
+
+        if flush:
+            self.db.session.flush()
+        if commit:
+            self.db.session.commit()
+
+    def invalidate(self, commit=False):
+        log_event('Drop', 'tx', 'cache')
+        log_event('Drop', 'blk', 'cache')
+
+        self.db.session.flush()
+        self.db.session.execute('UPDATE `%s` SET `valid` = \'0\' WHERE \'1\' = \'1\';' % (CachedValue.__tablename__), {})
+        if commit:
+            self.db.session.commit()
+
+    def is_valid(self, ids):
+        return len(self.db.session.query(CachedValue).filter(CachedValue.id.in_(ids), CachedValue.valid == False).all()) == 0
+
+
+    @property
+    def total_transactions(self):
+        return self.get(CACHE_IDS.TOTAL_TRANSACTIONS).value
+
+    @total_transactions.setter
+    def total_transactions(self, value):
+        self.set(CACHE_IDS.TOTAL_TRANSACTIONS, value)
+
+
+    @property
+    def total_blocks(self):
+        return self.get(CACHE_IDS.TOTAL_BLOCKS).value
+
+    @total_blocks.setter
+    def total_blocks(self, value):
+        self.set(CACHE_IDS.TOTAL_BLOCKS, value)
+
+
+    @property
+    def total_fees(self):
+        return self.get(CACHE_IDS.TOTAL_FEES).value
+
+    @total_fees.setter
+    def total_fees(self, value):
+        self.set(CACHE_IDS.TOTAL_FEES, value)
+
+
+    @property
+    def total_coins_released(self):
+        return self.get(CACHE_IDS.TOTAL_COINS_RELEASED).value
+
+    @total_coins_released.setter
+    def total_coins_released(self, value):
+        self.set(CACHE_IDS.TOTAL_COINS_RELEASED, value)
+
+
+
 class DatabaseSession(object):
     def __init__(self, session, address_cache, txid_cache, utxo_cache=None):
         self.session = session
@@ -38,6 +121,10 @@ class DatabaseSession(object):
 
     def reset_session(self):
         self.session.rollback()
+
+    @property
+    def cache(self):
+        return Cache(self)
 
     def decode_address_for(self, txout_type):
         txout = self.session.query(
@@ -333,6 +420,8 @@ class DatabaseSession(object):
             block.height = int(blockinfo['height'])
             self.session.add(block)
 
+            self.cache.invalidate()     # Since we skip confirming txs, we need to do a full recalc
+
             if commit:
                 self.session.commit()
             else:
@@ -340,6 +429,29 @@ class DatabaseSession(object):
 
             self._chaintip = None
             return
+
+        if not self.cache.is_valid(ids=Cache.ALL_IDS):
+            self.session.flush()
+            self.session.commit()
+
+            cache = self.cache
+
+            if not self.cache.is_valid(ids=Cache.BLOCK_CACHE_IDS):
+                log_event('Recalc', 'blk', 'cache')
+                block_stats = self.block_stats(use_cache=False)
+                cache.total_blocks = block_stats['blocks']
+                cache.total_fees = block_stats['totalfees']
+                cache.total_coins_released = block_stats['coinsreleased']
+                log_event('Updated', 'blk', 'cache')
+                self.session.commit()
+
+            if not self.cache.is_valid(ids=Cache.TRANSACTION_CACHE_IDS):
+                log_event('Recalc', 'tx', 'cache')
+                transaction_stats = self.transaction_stats(use_cache=False)
+                cache.total_transactions = transaction_stats['transactions']
+                log_event('Updated', 'tx', 'cache')
+                self.session.commit()
+
 
         block = Block()
 
@@ -374,6 +486,13 @@ class DatabaseSession(object):
         else:
             raise Exception('No coinbase!')
 
+        self.cache.total_blocks = self.cache.total_blocks + 1
+        self.cache.total_fees = self.cache.total_fees + block.totalfee
+        log_event('Updated', 'blk', 'cache')
+
+        self.cache.total_transactions = self.cache.total_transactions + len(blockinfo['tx']) - len(coinbase_signatures)
+        log_event('Updated', 'tx', 'cache')
+
         if commit:
             log_block_event(hexlify(block.hash), 'Commit')
             self.session.commit()
@@ -388,6 +507,8 @@ class DatabaseSession(object):
         chaintip = self.chaintip()
         for height in range(chaintip.height, first_height - 1, -1):
             self.orphan_block(height)
+
+        self.cache.invalidate(commit=True)
 
     def orphan_block(self, height):
         block = self.block(height)
@@ -677,6 +798,8 @@ class DatabaseSession(object):
 
         self.session.add(coinbaseinfo)
         self.session.flush()
+
+        self.cache.total_coins_released = self.cache.total_coins_released + coinbaseinfo.newcoins
 
         self.find_and_set_miner(block, coinbaseinfo, solo)
 

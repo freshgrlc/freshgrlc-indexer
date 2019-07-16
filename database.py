@@ -67,7 +67,7 @@ class Cache(object):
 
     @property
     def total_transactions(self):
-        return self.get(CACHE_IDS.TOTAL_TRANSACTIONS).value
+        return int(self.get(CACHE_IDS.TOTAL_TRANSACTIONS).value)
 
     @total_transactions.setter
     def total_transactions(self, value):
@@ -76,7 +76,7 @@ class Cache(object):
 
     @property
     def total_blocks(self):
-        return self.get(CACHE_IDS.TOTAL_BLOCKS).value
+        return int(self.get(CACHE_IDS.TOTAL_BLOCKS).value)
 
     @total_blocks.setter
     def total_blocks(self, value):

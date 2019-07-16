@@ -16,6 +16,8 @@ from logger import *
 
 INTEGER_TYPES = [int] if version_info[0] > 2 else [int, long]
 
+EPOCH = datetime.fromtimestamp(0)
+
 
 class Cache(object):
     ALL_IDS = [
@@ -327,7 +329,14 @@ class DatabaseSession(object):
         ).join(Block).filter(Block.timestamp >= since).group_by(Pool.name).all()
         return [dict(zip(('name', 'amountmined', 'latestblock', 'website', 'graphcolor'), stats)) for stats in results]
 
-    def block_stats(self, since=None):
+    def block_stats(self, since=None, use_cache=True):
+        if use_cache and (since is None or since == EPOCH):
+            return {
+                'blocks': self.cache.total_blocks,
+                'totalfees': self.cache.total_fees,
+                'coinsreleased': self.cache.total_coins_released
+            }
+
         query = self.session.query(
             sqlfunc.count(Block.id),
             sqlfunc.sum(Block.totalfee),
@@ -360,15 +369,17 @@ class DatabaseSession(object):
         ).all()[0]))
 
     def total_transactions(self, use_cache=True):
+        if use_cache:
+            return self.cache.total_transactions
         return self.transaction_stats()['transactions']
 
     def total_transactions_since(self, since=None):
-        if since is None or since == 0:
+        if since is None or since == EPOCH:
             return self.total_transactions()
         return self.transaction_stats(since=since)['transactions']
 
     def network_stats(self, since, ignore=[]):
-        if (since is None or since == 0 or 'coinsreleased' in ignore) and 'blocks' in ignore and 'totalfees' in ignore:
+        if (since is None or since == EPOCH or 'coinsreleased' in ignore) and 'blocks' in ignore and 'totalfees' in ignore:
             network_stats = {}
             if 'coinsreleased' not in ignore:
                 network_stats['coinsreleased'] = self.total_coins_released()
@@ -380,7 +391,10 @@ class DatabaseSession(object):
 
         return network_stats
 
-    def total_coins_released(self):
+    def total_coins_released(self, use_cache=True):
+        if use_cache:
+            return self.cache.total_coins_released
+
         return self.session.query(
             sqlfunc.count(Block.id),
             sqlfunc.sum(CoinbaseInfo.newcoins)
@@ -447,7 +461,7 @@ class DatabaseSession(object):
 
             if not self.cache.is_valid(ids=Cache.TRANSACTION_CACHE_IDS):
                 log_event('Recalc', 'tx', 'cache')
-                transaction_stats = self.transaction_stats(use_cache=False)
+                transaction_stats = self.transaction_stats()
                 cache.total_transactions = transaction_stats['transactions']
                 log_event('Updated', 'tx', 'cache')
                 self.session.commit()

@@ -357,7 +357,7 @@ def total_transactions():
     since = datetime.fromtimestamp(int(request.args.get('since') or 0))
     with db.new_session() as session:
         with QueryDataPostProcessor() as pp:
-            return pp.process_raw(float(session.total_transactions_since(since=since))).json()
+            return pp.process_raw(session.total_transactions_since(since=since)).json()
 
 
 @webapp.route('/networkstats/blocks/')

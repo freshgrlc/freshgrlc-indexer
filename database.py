@@ -39,7 +39,7 @@ class Cache(object):
         self.db = db
 
     def get(self, id):
-        return self.db.session.query(CachedValue).filter(CachedValue.id == CACHE_IDS.TOTAL_TRANSACTIONS).first()
+        return self.db.session.query(CachedValue).filter(CachedValue.id == id).first()
 
     def set(self, id, value, flush=True, commit=False):
         entry = self.get(id)

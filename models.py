@@ -1,5 +1,5 @@
 from binascii import hexlify
-from sqlalchemy import Column, ForeignKey, Integer, BigInteger, Float, String, CHAR, Binary, VARBINARY, DateTime, func as sqlfunc
+from sqlalchemy import Column, ForeignKey, Boolean, Integer, BigInteger, Float, String, CHAR, Binary, VARBINARY, DateTime, func as sqlfunc
 from sqlalchemy.orm import relationship
 from sqlalchemy.orm.session import Session
 from sqlalchemy.ext.declarative import declarative_base
@@ -97,6 +97,13 @@ class TXOUT_TYPES:
         if rpcapi_type in cls.RPCAPI_MAPPINGS.keys():
             return cls.RPCAPI_MAPPINGS[rpcapi_type]
         return cls.RAW
+
+
+class CACHE_IDS:
+    TOTAL_TRANSACTIONS = 0
+    TOTAL_BLOCKS = 1
+    TOTAL_FEES = 2
+    TOTAL_COINS_RELEASED = 3
 
 
 def address_friendly_name(address):
@@ -238,6 +245,14 @@ class BlockTransaction(Base):
 
     transaction = relationship('Transaction', back_populates='blockreferences', foreign_keys=[transaction_id])
     block = relationship('Block', back_populates='transactionreferences')
+
+
+class CachedValue(Base):
+    __tablename__ = 'cache'
+
+    id = Column(Integer, primary_key=True)
+    valid = Column(Boolean)
+    value = Column(Float(asdecimal=True))
 
 
 class CoinbaseInfo(Base):

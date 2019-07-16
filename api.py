@@ -346,10 +346,34 @@ def richlist():
 
 @webapp.route('/coins/')
 @cross_origin()
-def total_coins():
+def coins_info():
     with db.new_session() as session:
         with QueryDataPostProcessor() as pp:
             return pp.process_raw(session.total_coins_info()).json()
+
+
+@webapp.route('/coins/total/')
+@cross_origin()
+def total_coins():
+    with db.new_session() as session:
+        with QueryDataPostProcessor() as pp:
+            return pp.process_raw(session.total_coins_info())['total'].json()
+
+
+@webapp.route('/coins/total/released/')
+@cross_origin()
+def total_coins_released():
+    with db.new_session() as session:
+        with QueryDataPostProcessor() as pp:
+            return pp.process_raw(float(session.total_coins_released())).json()
+
+
+@webapp.route('/coins/total/current/')
+@cross_origin()
+def total_coins_in_addresses():
+    with db.new_session() as session:
+        with QueryDataPostProcessor() as pp:
+            return pp.process_raw(float(session.total_coins_in_addresses())).json()
 
 
 @webapp.route('/search/<id>')

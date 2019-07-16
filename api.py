@@ -306,7 +306,7 @@ def transaction_output(txid, index):
 
 @webapp.route('/networkstats/')
 @cross_origin()
-def stats():
+def network_stats():
     since = datetime.fromtimestamp(int(request.args.get('since') or 0))
     with db.new_session() as session:
         with QueryDataPostProcessor() as pp:
@@ -323,6 +323,44 @@ def stats():
                 'coins': {
                     'released':     data['coinsreleased']
                 }
+            }).json()
+
+
+@webapp.route('/networkstats/coins/')
+@cross_origin()
+def network_coin_stats():
+    since = datetime.fromtimestamp(int(request.args.get('since') or 0))
+    with db.new_session() as session:
+        with QueryDataPostProcessor() as pp:
+            data = pp.process_raw(session.network_stats(since=since, ignore=['blocks', 'totalfees', 'transactions', 'transactedvalue'])).data
+            return pp.process_raw({
+                'released':     data['coinsreleased']
+            }).json()
+
+
+@webapp.route('/networkstats/transactions/')
+@cross_origin()
+def network_transaction_stats():
+    since = datetime.fromtimestamp(int(request.args.get('since') or 0))
+    with db.new_session() as session:
+        with QueryDataPostProcessor() as pp:
+            data = pp.process_raw(session.transaction_stats(since=since)).data
+            return pp.process_raw({
+                'amount':       data['transactions'],
+                'totalvalue':   data['transactedvalue']
+            }).json()
+
+
+@webapp.route('/networkstats/blocks/')
+@cross_origin()
+def network_block_stats():
+    since = datetime.fromtimestamp(int(request.args.get('since') or 0))
+    with db.new_session() as session:
+        with QueryDataPostProcessor() as pp:
+            data = pp.process_raw(session.network_stats(since=since, ignore=['transactions', 'transactedvalue', 'coinsreleased'])).data
+            return pp.process_raw({
+                'amount':       data['blocks'],
+                'totalfees':    data['totalfees']
             }).json()
 
 

@@ -272,9 +272,17 @@ class DatabaseSession(object):
             Transaction.coinbaseinfo == None
         ).all()[0]))
 
-    def network_stats(self, since):
-        network_stats = self.block_stats(since=since)
-        network_stats.update(self.transaction_stats(since=since))
+    def network_stats(self, since, ignore=[]):
+        if (since == 0 or 'coinsreleased' in ignore) and 'blocks' in ignore and 'totalfees' in ignore:
+            network_stats = {}
+            if 'coinsreleased' not in ignore:
+                network_stats['coinsreleased'] = self.total_coins_released()
+        else:
+            network_stats = self.block_stats(since=since)
+
+        if 'transactions' not in ignore or 'transactedvalue' not in ignore:
+            network_stats.update(self.transaction_stats(since=since))
+
         return network_stats
 
     def total_coins_released(self):

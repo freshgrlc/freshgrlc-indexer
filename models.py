@@ -177,9 +177,13 @@ class Address(Base):
             Address.mutations
         ).join(
             Mutation.transaction
+        ).join(
+            Transaction.coinbaseinfo,
+            isouter=True
         ).filter(
             Address.id == self.id,
-            Transaction.confirmation == None
+            Transaction.confirmation == None,
+            CoinbaseInfo.transaction_id == None
         ).all()[0][1]
         return pending if pending != None else 0.0
 

@@ -223,7 +223,9 @@ class DatabaseSession(object):
             return float(address.balance)
 
     def address_pending_balance(self, address):
-        return float(sum([ m['change'] for m in self.address_mutations(address, confirmed=False, limit=1000) ]))
+        address = self.session.query(Address).filter(Address.address == address).first()
+        if address != None:
+            return float(address.pending)
 
     def address_mutations(self, address, confirmed=None, start=0, limit=100):
         if limit == 0:

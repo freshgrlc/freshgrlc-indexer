@@ -768,21 +768,59 @@ class DatabaseSession(object):
             self.session.add(blockref)
             self.session.flush()
 
-        # tx.confirmation_id = blockref.id
-        #
-        # for input in tx.txinputs:
-        #    input.input.spentby_id = input.id
         self.session.execute('UPDATE `transaction` SET `confirmation` = :blockref WHERE `id` = :tx_id;', {'blockref': blockref.id, 'tx_id': tx_id})
         self.session.execute('UPDATE `txout` LEFT JOIN `txin` ON `txout`.`id` = `txin`.`input` SET `spentby` = `txin`.`id` WHERE `txin`.`transaction` = :tx_id;', {
             'tx_id': tx_id
         })
 
-        self.session.execute('UPDATE `address` JOIN `txout` ON `txout`.`address` = `address`.`id` SET `address`.`balance_dirty` = \'1\' WHERE `txout`.`transaction` = :tx_id;', {
-            'tx_id': tx_id
-        })
-        self.session.execute('UPDATE `address` JOIN `txout` ON `txout`.`address` = `address`.`id` JOIN `txin` ON `txin`.`input` = `txout`.`id` SET `address`.`balance_dirty` = \'1\' WHERE `txin`.`transaction` = :tx_id;', {
-            'tx_id': tx_id
-        })
+        ##
+        ##  Process address balance updates.
+        ##
+        ##  Note that this is terribly slow during catchup, but
+        ##  *way* faster than full-on utxo queries when in sync.
+        ##
+
+        update_balances = {}
+        def process_address_mutations(results, factor=1):
+            for address, mutation in results:
+                if address.balance_dirty != 0:
+                    log_balance_event(address.address if address.address is not None else ' < RAW >', 'Dirty')
+                    address.balance_dirty = 1
+                else:
+                    if address.id not in update_balances:
+                        update_balances[address.id] = [address, Decimal(0.0)]
+                    update_balances[address.id][1] += mutation * factor
+
+        process_address_mutations(self.session.query(
+            Address,
+            sqlfunc.sum(TransactionOutput.amount)
+        ).join(
+            TransactionOutput
+        ).join(
+            TransactionOutput.spenders
+        ).filter(
+            TransactionInput.transaction_id == tx_id
+        ).group_by(
+            Address.id
+        ).all(), factor=-1)
+
+        process_address_mutations(self.session.query(
+            Address,
+            sqlfunc.sum(TransactionOutput.amount)
+        ).join(
+            TransactionOutput
+        ).filter(
+            TransactionOutput.transaction_id == tx_id
+        ).group_by(
+            Address.id
+        ).all())
+
+        for address, mutation in update_balances.values():
+            log_balance_event(address.address if address.address is not None else ' < RAW >', 'Update', mutation=mutation)
+            address.balance += mutation
+            self.session.add(address)       # FIXME: Are results automatically part of the session?
+
+        self.session.flush()
 
     def add_coinbase_data(self, block, txid, signature, outputs):
         coinbaseinfo = CoinbaseInfo()
@@ -888,6 +926,8 @@ class DatabaseSession(object):
             db_address.address = address
             db_address.type = addr_type
             db_address.raw = raw
+            db_address.balance = Decimal(0.0)
+            db_address.balance_dirty = 0
 
             self.session.add(db_address)
 

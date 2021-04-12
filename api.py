@@ -141,6 +141,7 @@ def blocks():
             pp.reflink('mutations', '/transactions/<Transaction.txid>/mutations')
             pp.reflink('inputs', '/transactions/<Transaction.txid>/inputs')
             pp.reflink('outputs', '/transactions/<Transaction.txid>/outputs')
+            pp.reflink('coinbase', '/transactions/<Transaction.txid>/coinbase')
             pp.autoexpand()
             pp.reflink('block', '/blocks/<query:transaction.block.hash>/', ['hash', 'height'])
             return pp.process(session.blocks(pp.start, pp.limit, pp.interval)).json()
@@ -156,6 +157,7 @@ def block(blockid):
             pp.reflink('mutations', '/transactions/<Transaction.txid>/mutations')
             pp.reflink('inputs', '/transactions/<Transaction.txid>/inputs')
             pp.reflink('outputs', '/transactions/<Transaction.txid>/outputs')
+            pp.reflink('coinbase', '/transactions/<Transaction.txid>/coinbase')
             pp.autoexpand()
             pp.reflink('block', '/blocks/<query:transaction.block.hash>/', ['hash', 'height'])
 
@@ -189,8 +191,9 @@ def blocktransactions(blockid):
             pp.reflink('mutations', '/transactions/<Transaction.txid>/mutations')
             pp.reflink('inputs', '/transactions/<Transaction.txid>/inputs')
             pp.reflink('outputs', '/transactions/<Transaction.txid>/outputs')
+            pp.reflink('coinbase', '/transactions/<Transaction.txid>/coinbase')
             pp.autoexpand()
-            pp.resolve_keys('Block.transactions', 'Transaction.block', 'Transaction.mutations', 'Transaction.inputs', 'Transaction.outputs')
+            pp.resolve_keys('Block.transactions', 'Transaction.block', 'Transaction.mutations', 'Transaction.inputs', 'Transaction.outputs', 'Transaction.coinbase')
             pp.reflink('block', '/blocks/<query:transaction.block.hash>/', ['hash', 'height'])
 
             block = session.block(blockid)
@@ -232,7 +235,7 @@ def transaction(txid):
     with db.new_session() as session:
         with QueryDataPostProcessor() as pp:
             pp.baseurl('/transactions/<Transaction.txid>/')
-            pp.reflinks('mutations', 'inputs', 'outputs')
+            pp.reflinks('mutations', 'inputs', 'outputs', 'coinbase')
             pp.reflink('block', '/blocks/<query:transaction.block.hash>/', ['hash', 'height'])
             pp.reflink('miner', '/blocks/<query:transaction.block.hash>/miner')
             pp.autoexpand()
@@ -243,6 +246,18 @@ def transaction(txid):
                 return make404()
 
             return pp.process(transaction).json()
+
+
+@webapp.route('/transactions/<txid>/coinbase/')
+@cross_origin()
+def transaction_coinbase(txid):
+    with db.new_session() as session:
+        with QueryDataPostProcessor() as pp:
+            transaction = session.transaction(txid, include_confirmation_info=False)
+            if transaction == None:
+                return make404()
+
+            return pp.process(transaction.coinbase).json()
 
 
 @webapp.route('/transactions/<txid>/mutations/')

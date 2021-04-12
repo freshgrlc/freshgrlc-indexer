@@ -1,4 +1,5 @@
-from binascii import hexlify
+from binascii import hexlify, unhexlify
+from datetime import datetime
 from sqlalchemy import Column, ForeignKey, Boolean, Integer, BigInteger, Float, String, CHAR, BINARY as Binary, VARBINARY, DateTime, func as sqlfunc
 from sqlalchemy.orm import relationship
 from sqlalchemy.orm.session import Session
@@ -273,6 +274,70 @@ class CoinbaseInfo(Base):
     transaction = relationship('Transaction', back_populates='coinbaseinfo', uselist=False)
     mainoutput = relationship('TransactionOutput')
 
+    API_DATA_FIELDS = [signature, 'CoinbaseInfo.data', 'CoinbaseInfo.height', 'CoinbaseInfo.timestamp', 'CoinbaseInfo.extranonce']
+
+    def _parse_data_field(self, idx):
+        if idx < len(self.raw):
+            datalen = ord(self.raw[idx])
+            if idx + 1 + datalen <= len(self.raw):
+                return self.raw[idx+1:idx+1+datalen]
+
+    @property
+    def data(self):
+        try:
+            return self._data
+        except AttributeError:
+            pass
+
+        idx = 0
+        self._data = []
+
+        while True:
+            next_field = self._parse_data_field(idx)
+            if next_field is None:
+                break
+
+            self._data.append(next_field)
+            idx += 1 + len(next_field)
+
+        # Height
+        if len(self._data) > 0:
+            self._data[0] = int(hexlify(self._data[0][::-1]), 16)
+
+        # Timestamp (optional)
+        if len(self._data) > 1:
+            try:
+                self._data[1] = datetime.utcfromtimestamp(int(hexlify(self._data[1][::-1]), 16)).strftime('%Y-%m-%d %H:%M:%S')
+            except ValueError:
+                pass
+
+        # Extranonce (optional)
+        if len(self._data) > 2:
+            self._data[2] = hexlify(self._data[2])
+
+        # Work-around for pool signature if not properly encoded
+        if idx < len(self.raw):
+            self._data.append(filter(lambda c: ord(c) > 0x20 and ord(c) < 127, self.raw[idx:]))
+
+        return self._data
+
+    @property
+    def height(self):
+        return self.data[0] if len(self.data) > 0 else None
+
+    @property
+    def timestamp(self):
+        return self.data[1] if len(self.data) > 2 else None
+
+    @property
+    def extranonce(self):
+        if len(self.data) > 2:
+            try:
+                unhexlify(self.data[2])
+            except TypeError:
+                return None
+            return self.data[2]
+
 
 class Mutation(Base):
     __tablename__ = 'mutation'
@@ -357,8 +422,8 @@ class Transaction(Base):
     txoutputs = relationship('TransactionOutput', back_populates='transaction', cascade='save-update, merge, delete')
     address_mutations = relationship('Mutation', back_populates='transaction', cascade='save-update, merge, delete')
 
-    API_DATA_FIELDS = [txid, size, fee, totalvalue, firstseen, 'Transaction.confirmed', 'Transaction.coinbase']
-    POSTPROCESS_RESOLVE_FOREIGN_KEYS = ['Transaction.block', 'Transaction.mutations', 'Transaction.inputs', 'Transaction.outputs']
+    API_DATA_FIELDS = [txid, size, fee, totalvalue, firstseen, 'Transaction.confirmed']
+    POSTPROCESS_RESOLVE_FOREIGN_KEYS = ['Transaction.block', 'Transaction.mutations', 'Transaction.inputs', 'Transaction.outputs', 'Transaction.coinbase']
 
     @property
     def confirmed(self):
@@ -366,7 +431,7 @@ class Transaction(Base):
 
     @property
     def coinbase(self):
-        return self.coinbaseinfo != None
+        return self.coinbaseinfo
 
     @property
     def block(self):

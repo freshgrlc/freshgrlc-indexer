@@ -450,10 +450,10 @@ def search(id):
                 return redirect('/address/%s/?%s' % (id, urlencode(request.args)))
         if len(id) == 32*2:
             if session.transaction(id) != None:
-                return redirect('/transactions/%s/?%s' % (id, urlencode()))
+                return redirect('/transactions/%s/?%s' % (id, urlencode(request.args)))
         if len(id) == 32*2 or id_int is not None:
             block = session.block(id)
             if block != None:
-                return redirect('/blocks/%s/?%s' % (hexlify(block.hash), urlencode()))
+                return redirect('/blocks/%s/?%s' % (hexlify(block.hash), urlencode(request.args)))
 
     return make404()

@@ -4,6 +4,7 @@ from binascii import hexlify
 from datetime import datetime
 from flask import Flask, jsonify, redirect, request, Response
 from flask_cors import cross_origin
+from urllib import urlencode
 from werkzeug.datastructures import Headers
 
 from addrcodecs import decode_any_address, encode_base58_address, encode_bech32_address
@@ -446,13 +447,13 @@ def search(id):
     with db.new_session() as session:
         if pubkeyhash is not None:
             if session.address_info(id) != None:
-                return redirect('/address/%s/' % id)
+                return redirect('/address/%s/?%s' % (id, urlencode(request.args)))
         if len(id) == 32*2:
             if session.transaction(id) != None:
-                return redirect('/transactions/%s/' % id)
+                return redirect('/transactions/%s/?%s' % (id, urlencode()))
         if len(id) == 32*2 or id_int is not None:
             block = session.block(id)
             if block != None:
-                return redirect('/blocks/%s/' % hexlify(block.hash))
+                return redirect('/blocks/%s/?%s' % (hexlify(block.hash), urlencode()))
 
     return make404()

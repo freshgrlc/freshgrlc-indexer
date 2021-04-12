@@ -1,5 +1,5 @@
 from binascii import hexlify
-from sqlalchemy import Column, ForeignKey, Boolean, Integer, BigInteger, Float, String, CHAR, Binary, VARBINARY, DateTime, func as sqlfunc
+from sqlalchemy import Column, ForeignKey, Boolean, Integer, BigInteger, Float, String, CHAR, BINARY as Binary, VARBINARY, DateTime, func as sqlfunc
 from sqlalchemy.orm import relationship
 from sqlalchemy.orm.session import Session
 from sqlalchemy.ext.declarative import declarative_base

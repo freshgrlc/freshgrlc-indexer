@@ -910,7 +910,7 @@ class DatabaseSession(object):
                 db_address = self.address_cache[address]
             else:
                 db_address = self.session.query(Address).filter(Address.address == address).first()
-                if db_address != None:
+                if db_address != None and self.address_cache is not None:
                     self.address_cache[address] = CachedAddress(db_address)
         else:
             db_address = None

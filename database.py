@@ -582,7 +582,7 @@ class DatabaseSession(object):
         tx.size = txinfo['size']
         tx.fee = -1.0
         tx.totalvalue = -1.0
-        tx.firstseen = datetime.utcfromtimestamp(txinfo['relayedat']) if 'relayedat' in txinfo and txinfo['relayedat'] is not None else None
+        tx.firstseen = datetime.utcfromtimestamp(txinfo['relayedat']) if 'relayedat' in txinfo and txinfo['relayedat'] is not None else datetime.now()
         tx.relayedby = txinfo['relayedby'] if 'relayedby' in txinfo else None
         tx.confirmation_id = None
 

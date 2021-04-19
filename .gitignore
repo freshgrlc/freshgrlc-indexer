@@ -1,6 +1,7 @@
 .kdev4/
 .idea/
 *.pyc
+__pycache__/
 config.py
 
 # VirtualEnv

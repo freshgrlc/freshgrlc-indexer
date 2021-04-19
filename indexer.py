@@ -8,7 +8,8 @@ from time import sleep, time
 from traceback import print_exc
 from sys import version_info, argv
 
-from coindaemon import Daemon
+from coinsupport import Daemon
+
 from database import DatabaseIO
 from models import Address, Block, CoinbaseInfo, Mutation, Transaction
 from config import Configuration

@@ -7,7 +7,8 @@ from flask_cors import cross_origin
 from urllib import urlencode
 from werkzeug.datastructures import Headers
 
-from addrcodecs import decode_any_address, encode_base58_address, encode_bech32_address
+from coinsupport.addresscodecs import decode_any_address, encode_base58_address, encode_bech32_address
+
 from config import Configuration
 from database import DatabaseIO
 from models import Block, _make_transaction_ref, ADDRESS_TYPES

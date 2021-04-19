@@ -7,8 +7,8 @@ from sqlalchemy.orm import sessionmaker
 from sys import version_info
 from time import time
 
-import coininfo
-from addrcodecs import decode_any_address
+from coinsupport import coins
+from coinsupport.addresscodecs import decode_any_address
 from models import *
 from postprocessor import convert_date
 from logger import *
@@ -155,7 +155,7 @@ class DatabaseSession(object):
         _, p2pkh_address_version = self.decode_address_for(TXOUT_TYPES.P2PKH)
         _, p2sh_address_version = self.decode_address_for(TXOUT_TYPES.P2SH)
 
-        coin_info = coininfo.by_address_versions(p2pkh_address_version, p2sh_address_version)
+        coin_info = coins.by_address_versions(p2pkh_address_version, p2sh_address_version)
         if coin_info is None:
             return None
 
@@ -171,7 +171,7 @@ class DatabaseSession(object):
         if p2wpkh_address_type is not None and p2pkh_address_type == p2wpkh_address_type and p2pkh_address_version == p2wpkh_address_version:
             translations[(ADDRESS_TYPES.BECH32, 0)] = (p2pkh_address_type, p2pkh_address_version)
 
-            coin_info = coininfo.by_address_versions(p2pkh_address_version, p2sh_address_version)
+            coin_info = coins.by_address_versions(p2pkh_address_version, p2sh_address_version)
             if coin_info is not None and coin_info['segwit_info'] is not None and coin_info['segwit_info']['addresstype'] == ADDRESS_TYPES.BASE58:
                 translations[(ADDRESS_TYPES.BASE58, coin_info['segwit_info']['address_version'])] = (p2pkh_address_type, p2pkh_address_version)
 

@@ -171,7 +171,7 @@ class Context(Configuration):
     def update_coindays_destroyed(self, amount_at_once=20):
         self.db.reset_session()
 
-        results = self.db.query(
+        results = self.db.session.query(
             Transaction,
             Block.timestamp
         ).join(
@@ -193,7 +193,7 @@ class Context(Configuration):
         for tx, block_timestamp in results:
             tx_timestamp = tx.firstseen if tx.firstseen != None else block_timestamp
 
-            inputs = self.db.query(
+            inputs = self.db.session.query(
                 TransactionOutput.amount,
                 Block.timestamp
             ).join(

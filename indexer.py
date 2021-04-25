@@ -216,7 +216,7 @@ class Context(Configuration):
 
         self.db.session.add(model)
         self.db.session.commit()
-        log_tx_event(txid, 'Coindays')
+        log_tx_event(hexlify(txid), 'Coindays')
         return True
 
     def migrate_old_data(self):

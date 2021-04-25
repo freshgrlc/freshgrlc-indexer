@@ -18,7 +18,7 @@ def log_event(event, objtype, obj, params=None):
                 }.items())
             ])
     params = ' (%s)' % params if params is not None else ''
-    log('%-7s %-4s %s%s' % (event, objtype, obj, params))
+    log('%-8s %-4s %s%s' % (event, objtype, obj, params))
 
 
 def log_tx_event(tx, event, **kwargs):

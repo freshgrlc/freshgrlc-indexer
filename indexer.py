@@ -211,7 +211,7 @@ class Context(Configuration):
 
         model = CoinDaysDestroyed()
         model.timestamp = tx_timestamp
-        model.transaction = tx_id
+        model.transaction_id = tx_id
         model.coindays = coindays_destroyed
 
         self.db.session.add(model)

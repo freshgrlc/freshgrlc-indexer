@@ -29,6 +29,7 @@ class Context(Configuration):
         self.mempoolcache = TTLCache(ttl=600, maxsize=4096)
         self.migration_type = 'init'
         self.migration_last_id = None
+        self.coindays_destroyed_calc_last_block_id = 1
 
     def __enter__(self):
         return self
@@ -172,27 +173,32 @@ class Context(Configuration):
         self.db.reset_session()
 
         results = self.db.session.query(
-            Transaction,
-            Block.timestamp
+            Block.id,
+            Block.timestamp,
+            Transaction
+        ).join(
+            Block.transactionreferences
+        ).join(
+            BlockTransaction.transaction
         ).join(
             Transaction.coindays_destroyed,
             isouter=True
         ).join(
-            Transaction.confirmation
-        ).join(
-            BlockTransaction.block
-        ).join(
-            Transaction.txinputs
+            Transaction.coinbaseinfo,
+            isouter=True
         ).filter(
-            CoinDaysDestroyed.transaction_id == None
-        ).group_by(
-            Transaction.id
+            Block.height != None,
+            CoinDaysDestroyed.transaction_id == None,
+            CoinbaseInfo.transaction_id == None,
+            Block.id >= self.coindays_destroyed_calc_last_block_id
+        ).order_by(
+            Block.id.asc()
         ).limit(amount_at_once).all()
 
         if len(results) == 0:
             return False
 
-        for tx, block_timestamp in results:
+        for _, block_timestamp, tx in results:
             tx_timestamp = tx.firstseen if tx.firstseen != None else block_timestamp
 
             inputs = self.db.session.query(
@@ -227,6 +233,8 @@ class Context(Configuration):
 
         log_event('Commit', '%d' % len(results), 'destroyed coin-days entries')
         self.db.session.commit()
+
+        self.coindays_destroyed_calc_last_block_id = max([result[0] for result in results])
         return True
 
     def migrate_old_data(self):

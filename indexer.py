@@ -214,7 +214,7 @@ class Context(Configuration):
                     in inputs
             ])
 
-            log_tx_event(hexlify(tx.txid), 'Coindays', coins=sum([input[0] for input in inputs]), coindays_destroyed=coindays_destroyed, date=tx_timestamp.strftime('%Y-%m-%d %H:%M:%S'))
+            log_tx_event(hexlify(tx.txid), 'Coindays', inputs=len(inputs), coins=sum([input[0] for input in inputs]), coindays_destroyed=coindays_destroyed, date=tx_timestamp.strftime('%Y-%m-%d %H:%M:%S'))
 
             model = CoinDaysDestroyed()
             model.transaction_id = tx.id

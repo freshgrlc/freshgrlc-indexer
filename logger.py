@@ -29,5 +29,6 @@ def log_block_event(block, event, **kwargs):
     log_event(event, 'blk', block, kwargs if kwargs != {} else None)
 
 
-def log_balance_event(block, event, **kwargs):
-    log_event(event, 'bal', block, kwargs if kwargs != {} else None)
+def log_balance_event(address, event, **kwargs):
+    log_event(event, 'bal', address, kwargs if kwargs != {} else None)
+

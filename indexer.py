@@ -168,7 +168,7 @@ class Context(Configuration):
         self.db.update_address_balance_slow(dirty_address)
         return True
 
-    def update_coindays_destroyed(self, amount_at_once=20):
+    def update_coindays_destroyed(self, amount_at_once=50):
         self.db.reset_session()
 
         results = self.db.session.query(

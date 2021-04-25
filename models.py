@@ -342,7 +342,7 @@ class CoinbaseInfo(Base):
 class CoinDaysDestroyed(Base):
     __tablename__ = 'coindaysdestroyed'
 
-    transaction_id = Column('transaction', BigInteger, ForeignKey('transaction.id'), unique=True)
+    transaction_id = Column('transaction', BigInteger, ForeignKey('transaction.id'), primary_key=True)
     coindays = Column(Float(asdecimal=True))
     timestamp = Column(DateTime())
 

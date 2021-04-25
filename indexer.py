@@ -185,6 +185,8 @@ class Context(Configuration):
             Transaction.txinputs
         ).filter(
             CoinDaysDestroyed.transaction_id == None
+        ).group_by(
+            Transaction.id
         ).limit(amount_at_once).all()
 
         if len(results) == 0:

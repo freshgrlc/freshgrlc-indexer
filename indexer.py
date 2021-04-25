@@ -206,7 +206,7 @@ class Context(Configuration):
                 BlockTransaction.block
             ).filter(
                 TransactionInput.transaction_id == tx.id
-            ).first()
+            ).all()
 
             coindays_destroyed = sum([
                 float(amount) * ((tx_timestamp - orig_timestamp).total_seconds() / 86400 if orig_timestamp < tx_timestamp else 0)

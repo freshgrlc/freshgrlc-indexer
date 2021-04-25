@@ -339,6 +339,16 @@ class CoinbaseInfo(Base):
             return self.data[2]
 
 
+class CoinDaysDestroyed(Base):
+    __tablename__ = 'coindaysdestroyed'
+
+    transaction_id = Column('transaction', BigInteger, ForeignKey('transaction.id'), unique=True)
+    coindays = Column(Float(asdecimal=True))
+    timestamp = Column(DateTime())
+
+    transaction = relationship('Transaction', back_populates='coindays_destroyed')
+
+
 class Mutation(Base):
     __tablename__ = 'mutation'
 
@@ -421,8 +431,9 @@ class Transaction(Base):
     txinputs = relationship('TransactionInput', back_populates='transaction', cascade='save-update, merge, delete')
     txoutputs = relationship('TransactionOutput', back_populates='transaction', cascade='save-update, merge, delete')
     address_mutations = relationship('Mutation', back_populates='transaction', cascade='save-update, merge, delete')
+    coindays_destroyed = relationship('CoinDaysDestroyed', back_populates='transaction', uselist=False, cascade='save-update, merge, delete')
 
-    API_DATA_FIELDS = [txid, size, fee, totalvalue, firstseen, 'Transaction.confirmed']
+    API_DATA_FIELDS = [txid, size, fee, totalvalue, firstseen, 'Transaction.confirmed', 'Transaction.coindaysdestroyed']
     POSTPROCESS_RESOLVE_FOREIGN_KEYS = ['Transaction.block', 'Transaction.mutations', 'Transaction.inputs', 'Transaction.outputs', 'Transaction.coinbase']
 
     @property
@@ -482,6 +493,10 @@ class Transaction(Base):
             return self.firstseen
         block = self.block
         return block.time if block != None else None
+
+    @property
+    def coindaysdestroyed(self):
+        return self.coindays_destroyed.coindays if self.coindays_destroyed != None else None
 
 
 class TransactionInput(Base):

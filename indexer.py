@@ -11,9 +11,9 @@ from sys import version_info, argv
 from coinsupport import Daemon
 
 from database import DatabaseIO
-from models import Address, Block, CoinbaseInfo, Mutation, Transaction
+from models import Address, Block, CoinbaseInfo, CoinDaysDestroyed, Mutation, Transaction
 from config import Configuration
-from logger import log, log_event, log_block_event
+from logger import log, log_event, log_block_event, log_tx_event
 
 if version_info[0] > 2:
     import http.client as httplib
@@ -168,6 +168,57 @@ class Context(Configuration):
         self.db.update_address_balance_slow(dirty_address)
         return True
 
+    def update_single_coindays_destroyed(self):
+        query = '''
+            SELECT
+                `transaction`.`id`, `transaction`.`txid`, `transaction`.`firstseen`, `txblock`.`timestamp`, `txout`.`amount`, `origtxblock`.`timestamp`
+            FROM `transaction`
+                LEFT JOIN `coindaysdestroyed`
+                    ON `transaction`.`id` = `coindaysdestroyed`.`transaction`
+                INNER JOIN `txin`
+                    ON `transaction`.`id` = `txin`.`transaction`
+                LEFT JOIN `txout`
+                    ON `txin`.`input` = `txout`.`id`
+                LEFT JOIN `transaction` `origtx`
+                    ON `txout`.`transaction` = `origtx`.`id`
+                LEFT JOIN `blocktx` `origtxconfirm`
+                    ON `origtx`.`confirmation` = `origtxconfirm`.`id`
+                LEFT JOIN `block` `origtxblock`
+                    ON `origtxconfirm`.`block` = `origtxblock`.`id`
+                INNER JOIN `blocktx` `txconfirm`
+                    ON `transaction`.`confirmation` = `txconfirm`.`id`
+                LEFT JOIN `block` `txblock`
+                    ON `txconfirm`.`block` = `txblock`.`id`
+            WHERE
+                `coindaysdestroyed`.`transaction` IS NULL
+            LIMIT 1;
+        '''
+
+        self.db.reset_session()
+        results = self.db.session.execute(query).all()
+        if len(results) == 0:
+            return False
+
+        tx_id = results[0][0]
+        txid = results[0][1]
+        tx_timestamp = results[0][2] if results[0][2] != None else results[0][3]
+        inputs = [ (result[4], result[5]) for result in results ]
+        coindays_destroyed = sum([
+            float(amount) * ((tx_timestamp - orig_timestamp).total_seconds() / 86400 if orig_timestamp < tx_timestamp else 0)
+                for amount, orig_timestamp
+                in inputs
+        ])
+
+        model = CoinDaysDestroyed()
+        model.timestamp = tx_timestamp
+        model.transaction = tx_id
+        model.coindays = coindays_destroyed
+
+        self.db.session.add(model)
+        self.db.session.commit()
+        log_tx_event(txid, 'Coindays')
+        return True
+
     def migrate_old_data(self):
         if self.migration_type == 'init':
             self.migration_type = 'mutations'
@@ -313,6 +364,9 @@ def indexer(context):
         timeout = time() + 3
 
         if do_until_timeout(context.update_single_balance, timeout):
+            return True
+
+        if do_until_timeout(context.update_single_coindays_destroyed, timeout):
             return True
 
         # Data migration is done in bulk (with large commits!)

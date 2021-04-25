@@ -133,6 +133,23 @@ CREATE TABLE `coinbase` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `coindaysdestroyed`
+--
+
+DROP TABLE IF EXISTS `coindaysdestroyed`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `coindaysdestroyed` (
+  `transaction` bigint(20) NOT NULL,
+  `coindays` decimal(20,8) NOT NULL,
+  `timestamp` timestamp NOT NULL,
+  PRIMARY KEY (`transaction`),
+  KEY `timestamp` (`timestamp`),
+  CONSTRAINT `fk_coindaysdestroyed_transaction` FOREIGN KEY (`transaction`) REFERENCES `transaction` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `mutation`
 --
 

@@ -69,7 +69,7 @@ class Context(Configuration):
         if indexer_tip == None:
             return -1, -1, chaintip_height
 
-        ancestor_height = indexer_tip.height
+        ancestor_height = indexer_tip.height if indexer_tip.height <= chaintip_height else chaintip_height
         chain_block_hash = daemon.getblockhash(ancestor_height)
 
         if indexer_tip.hash != unhexlify(chain_block_hash):

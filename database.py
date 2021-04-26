@@ -328,7 +328,7 @@ class DatabaseSession(object):
             sqlfunc.max(Block.height).label('lastblock'),
             Pool.website,
             Pool.graphcolor
-        ).join(Block).filter(Block.timestamp >= since).group_by(Pool.name).all()
+        ).join(Block).filter(Block.timestamp >= since, Block.height != None).group_by(Pool.name).all()
         return [dict(zip(('name', 'amountmined', 'latestblock', 'website', 'graphcolor'), stats)) for stats in results]
 
     def block_stats(self, since=None, use_cache=True):

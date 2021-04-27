@@ -73,6 +73,7 @@ def address_info(address):
                 return make404()
 
             info['mutations'] = pp.get_reflink_object('/address/' + address + '/mutations/')
+            info['utxos'] = pp.get_reflink_object_or_data('/address/' + address + '/utxos/', 'utxos', lambda: session.address_utxos(address, limit=pp.MAX_OBJECTS_PER_PAGE))
 
             # FIXME: Move this some place else?
             if ADDRESS_TRANSLATIONS is not None and 'address' in info and info['address'] is not None:
@@ -129,6 +130,16 @@ def address_mutations(address):
                 del mutation['txid']
 
             return pp.process_raw(mutations).json()
+
+
+@webapp.route('/address/<address>/utxos/')
+@cross_origin()
+def address_utxos(address):
+    with db.new_session() as session:
+        with QueryDataPostProcessor() as pp:
+            pp.pagination(default_limit=pp.MAX_OBJECTS_PER_PAGE)
+            utxos = session.address_utxos(address, confirmed=param_true('confirmed'), start=pp.start, limit=pp.limit)
+            return pp.process_raw(utxos).json()
 
 
 @webapp.route('/blocks/')

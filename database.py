@@ -185,6 +185,10 @@ class DatabaseSession(object):
             self._chaintip = self.session.query(Block).filter(Block.height != None).order_by(Block.height.desc()).first()
         return self._chaintip
 
+    def current_coinbase_confirmation_height(self):
+        tip = self.chaintip()
+        return tip.height - 100 if tip != None else 0
+
     def block(self, blockid):
         if type(blockid) in INTEGER_TYPES:
             pass
@@ -272,6 +276,68 @@ class DatabaseSession(object):
                 query = query.join(CoinbaseInfo, isouter=True).filter(Transaction.confirmation_id == None).filter(CoinbaseInfo.transaction_id == None)
         results = query.order_by(Transaction.id.desc()).offset(start).limit(limit).all()
         return [{'time': convert_date(result[0].time), 'txid': hexlify(result[0].txid), 'change': float(result[1].amount), 'confirmed': result[0].confirmed} for result in results]
+
+    def address_utxos(self, address, confirmed=False, start=0, limit=0):
+        def get_coindays(coins, transaction):
+            if transaction.firstseen != None:
+                return round(coins * (datetime.now() - transaction.firstseen).total_seconds() / 86400, 5)
+            if transaction.confirmation != None and transaction.confirmation.timestamp != None:
+                return round(coins * (datetime.now() - transaction.confirmation.timestamp).total_seconds() / 86400, 5)
+            return 0.0
+
+        address = self._get_base_address(address)
+        if address is None:
+            return None
+        if limit == 0:
+            return []
+
+        query = self.session.query(
+            TransactionOutput,
+            Transaction
+        ).join(
+            TransactionOutput.address
+        ).join(
+            TransactionOutput.transaction
+        ).join(
+            TransactionOutput.spenders,
+            isouter=True
+        ).join(
+            Transaction.coinbaseinfo,
+            isouter=True
+        ).join(
+            CoinbaseInfo.block,
+            isouter=True
+        )
+
+        if confirmed:
+            query = query.filter(
+                Address.address == address,
+                TransactionOutput.spentby_id == None,
+                TransactionInput.id == None,
+                Transaction.confirmation != None,
+                or_(
+                    CoinbaseInfo.block_id == None,
+                    Block.height <= self.current_coinbase_confirmation_height()
+                )
+            )
+        else:
+            query = query.filter(
+                Address.address == address,
+                TransactionOutput.spentby_id == None,
+                TransactionInput.id == None,
+                or_(
+                    CoinbaseInfo.block_id == None,
+                    Block.height <= self.current_coinbase_confirmation_height()
+                )
+            )
+        return [{
+            'transaction': make_transaction_ref(transaction),
+            'index': result.index,
+            'value': float(result.amount),
+            'type': result.type,
+            'coindays': get_coindays(float(result.amount), transaction)
+        } for result, transaction in query.order_by(TransactionOutput.id).offset(start).limit(limit).all() ]
+
 
     def query_transactions(self, include_confirmation_info=False, confirmed_only=False):
         if include_confirmation_info:

@@ -72,7 +72,7 @@ def address_info(address):
             if info == None:
                 return make404()
 
-            info['mutations'] = {'href': QueryDataPostProcessor.API_ENDPOINT + '/address/' + address + '/mutations/'}
+            info['mutations'] = pp.get_reflink_object('/address/' + address + '/mutations/')
 
             # FIXME: Move this some place else?
             if ADDRESS_TRANSLATIONS is not None and 'address' in info and info['address'] is not None:

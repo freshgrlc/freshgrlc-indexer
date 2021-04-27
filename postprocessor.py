@@ -148,6 +148,7 @@ class QueryDataPostProcessor(Configuration):
         self.end = None
         self._baseurl = None
         self._reflinks = {}
+        self._expansion_requested = None
 
     def __enter__(self):
         return self
@@ -155,9 +156,17 @@ class QueryDataPostProcessor(Configuration):
     def __exit__(self, exc_type, exc_value, traceback):
         pass
 
-    def pagination(self, backwards_indexes=False, tipresolver=None, allow_interval=False):
-        start = int(request.args.get('start') or (-self.DEFAULT_OBJECTS_PER_PAGE if backwards_indexes else 0))
-        limit = int(request.args.get('limit') or self.DEFAULT_OBJECTS_PER_PAGE)
+    @property
+    def expansion_requested(self):
+        if self._expansion_requested is None:
+            self._expansion_requested = filter(lambda key: key != 'none', (request.args.get('expand') or 'none').split(','))
+        return self._expansion_requested
+
+    def pagination(self, backwards_indexes=False, tipresolver=None, allow_interval=False, default_limit=None):
+        if default_limit is None:
+            default_limit = self.DEFAULT_OBJECTS_PER_PAGE
+        start = int(request.args.get('start') or (-default_limit if backwards_indexes else 0))
+        limit = int(request.args.get('limit') or default_limit)
         interval = int(request.args.get('interval')) if allow_interval and request.args.get('interval') else None
         if interval <= 0:
             interval = None
@@ -199,9 +208,14 @@ class QueryDataPostProcessor(Configuration):
             self.reflink(key, self._baseurl + key + '/')
         return self
 
+    def get_reflink_object(self, template):
+        return {'href': self.API_ENDPOINT + template}
+
+    def get_reflink_object_or_data(self, template, name, data_cb):
+        return self.get_reflink_object(template) if name not in self.expansion_requested else data_cb()
+
     def autoexpand(self):
-        expansion_requested = filter(lambda key: key != 'none', (request.args.get('expand') or 'none').split(','))
-        self._reflinks = dict(filter(lambda pair: not pair[0] in expansion_requested, self._reflinks.items())) if '*' not in expansion_requested else {}
+        self._reflinks = dict(filter(lambda pair: not pair[0] in self.expansion_requested, self._reflinks.items())) if '*' not in self.expansion_requested else {}
         return self
 
     def _process(self, data):

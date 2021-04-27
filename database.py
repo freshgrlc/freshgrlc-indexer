@@ -7,8 +7,9 @@ from sqlalchemy.orm import sessionmaker
 from sys import version_info
 from time import time
 
+from config import Configuration
 from coinsupport import coins
-from coinsupport.addresscodecs import decode_any_address
+from coinsupport.addresscodecs import decode_any_address, encode_base58_address
 from models import *
 from postprocessor import convert_date
 from logger import *
@@ -103,6 +104,8 @@ class Cache(object):
 
 
 class DatabaseSession(object):
+    coin = coins.by_ticker(Configuration.COIN_TICKER)
+
     def __init__(self, session, address_cache, txid_cache, utxo_cache=None):
         self.session = session
         self._chaintip = None
@@ -207,27 +210,58 @@ class DatabaseSession(object):
             query = query.filter(Block.height >= range[0], Block.height < range[1])
         return int(query.all()[0][0])
 
-    def address_info(self, address, mutations_limit=100):
-        address = self.session.query(Address).filter(Address.address == address).first()
-        if address == None:
+    def _get_base_address(self, address):
+        try:
+            addr_type, version, hash = decode_any_address(address.encode('utf-8'), bech32_prefix=self.coin['bech32_prefix'])
+        except ValueError:
             return None
-        return {
-            'address': address.address,
-            'balance': float(address.balance),
-            'pending': float(address.pending)
-        }
+
+        if addr_type == 'bech32' and 'segwit_info' not in self.coin:
+            return None
+
+        segwit_base58_version = self.coin['segwit_info']['address_version'] if (
+                                    'segwit_info' in self.coin and
+                                    'address_version' in self.coin['segwit_info']
+                                ) else None
+
+        if addr_type == 'base58':
+            if version not in (self.coin['address_version'], self.coin['p2sh_address_version'], segwit_base58_version):
+                return None
+
+        if addr_type == 'bech32' or version == segwit_base58_version:
+            address = encode_base58_address(self.coin['address_version'], hash)
+
+        return address
+
+    def _address_info(self, address):
+        address = self._get_base_address(address)
+        if address == None:
+            return None, None
+        return address, self.session.query(Address).filter(Address.address == address).first()
+
+    def address_info(self, address):
+        address, address_info = self._address_info(address)
+        if address != None:
+            return {
+                'address': address_info.address if address_info != None else address.encode('utf-8'),
+                'balance': float(address_info.balance) if address_info != None else 0.0,
+                'pending': float(address_info.pending) if address_info != None else 0.0
+            }
 
     def address_balance(self, address):
-        address = self.session.query(Address).filter(Address.address == address).first()
+        address, address_info = self._address_info(address)
         if address != None:
-            return float(address.balance)
+            return float(address_info.balance) if address_info != None else 0.0
 
     def address_pending_balance(self, address):
-        address = self.session.query(Address).filter(Address.address == address).first()
+        address, address_info = self._address_info(address)
         if address != None:
-            return float(address.pending)
+            return float(address_info.pending) if address_info != None else 0.0
 
     def address_mutations(self, address, confirmed=None, start=0, limit=100):
+        address = self._get_base_address(address)
+        if address is None:
+            return None
         if limit == 0:
             return []
         query = self.session.query(Transaction, Mutation).join(Mutation).join(Address).filter(Address.address == address)

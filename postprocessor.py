@@ -38,7 +38,7 @@ def json_preprocess_value(k, v, cls):
 
     if datatype == Binary:
         return hexlify(v)
-    if datatype == DateTime:
+    if datatype == DateTime or datatype == datetime:
         return convert_date(v)
     if datatype == Float or datatype == Decimal:
         return float(v)

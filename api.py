@@ -341,15 +341,16 @@ def network_stats():
             data = pp.process_raw(session.network_stats(since=since)).data
             return pp.process_raw({
                 'blocks': {
-                    'amount':       data['blocks'],
-                    'totalfees':    data['totalfees']
+                    'amount':           data['blocks'],
+                    'totalfees':        data['totalfees']
                 },
                 'transactions': {
-                    'amount':       data['transactions'],
-                    'totalvalue':   data['transactedvalue']
+                    'amount':           data['transactions'],
+                    'totalvalue':       data['transactedvalue'],
+                    'coindaysdestroyed':data['destroyed']
                 },
                 'coins': {
-                    'released':     data['coinsreleased']
+                    'released':         data['coinsreleased']
                 }
             }).json()
 
@@ -360,7 +361,7 @@ def network_coin_stats():
     since = datetime.fromtimestamp(int(request.args.get('since') or 0))
     with db.new_session() as session:
         with QueryDataPostProcessor() as pp:
-            data = pp.process_raw(session.network_stats(since=since, ignore=['blocks', 'totalfees', 'transactions', 'transactedvalue'])).data
+            data = pp.process_raw(session.network_stats(since=since, ignore=['blocks', 'totalfees', 'transactions', 'transactedvalue', 'coindaysdestroyed'])).data
             return pp.process_raw({
                 'released':     data['coinsreleased']
             }).json()
@@ -372,10 +373,13 @@ def network_transaction_stats():
     since = datetime.fromtimestamp(int(request.args.get('since') or 0))
     with db.new_session() as session:
         with QueryDataPostProcessor() as pp:
-            data = pp.process_raw(session.transaction_stats(since=since)).data
+            data = session.transaction_stats(since=since)
+            data.update(session.coindays_stats(since=since))
+            data = pp.process_raw(data).data
             return pp.process_raw({
                 'amount':       data['transactions'],
-                'totalvalue':   data['transactedvalue']
+                'totalvalue':   data['transactedvalue'],
+                'coindaysdestroyed':data['destroyed']
             }).json()
 
 
@@ -388,13 +392,23 @@ def total_transactions():
             return pp.process_raw(session.total_transactions_since(since=since)).json()
 
 
+@webapp.route('/networkstats/transactions/coindaysdestroyed/')
+@cross_origin()
+def transactions_coindays_stats():
+    since = datetime.fromtimestamp(int(request.args.get('since') or 0))
+    interval = int(request.args.get('interval') or 0)
+    with db.new_session() as session:
+        with QueryDataPostProcessor() as pp:
+            return pp.process_raw(session.coindays_destroyed(since=since, interval=interval if interval > 0 else None)).json()
+
+
 @webapp.route('/networkstats/blocks/')
 @cross_origin()
 def network_block_stats():
     since = datetime.fromtimestamp(int(request.args.get('since') or 0))
     with db.new_session() as session:
         with QueryDataPostProcessor() as pp:
-            data = pp.process_raw(session.network_stats(since=since, ignore=['transactions', 'transactedvalue', 'coinsreleased'])).data
+            data = pp.process_raw(session.network_stats(since=since, ignore=['transactions', 'transactedvalue', 'coinsreleased', 'coindaysdestroyed'])).data
             return pp.process_raw({
                 'amount':       data['blocks'],
                 'totalfees':    data['totalfees']

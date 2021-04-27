@@ -470,6 +470,34 @@ class DatabaseSession(object):
             Transaction.coinbaseinfo == None
         ).all()[0]))
 
+    def coindays_stats(self, since=None, interval=None):
+        return { 'destroyed': self.coindays_destroyed(since=since) }
+
+    def coindays_destroyed(self, since=None, interval=None):
+        if interval is not None:
+            query = self.session.query(
+                sqlfunc.min(CoinDaysDestroyed.timestamp),
+                sqlfunc.max(CoinDaysDestroyed.timestamp),
+                sqlfunc.sum(CoinDaysDestroyed.coindays)
+            )
+            if since is not None:
+                query = query.filter(CoinDaysDestroyed.timestamp >= since)
+            query = query.group_by(
+                sqlfunc.floor(CoinDaysDestroyed.timestamp / interval)
+            ).order_by(
+                CoinDaysDestroyed.timestamp.asc()
+            )
+            return [ dict(zip(('start', 'end', 'coindaysdestroyed'), period)) for period in query.all() ]
+
+        query = self.session.query(
+            sqlfunc.sum(CoinDaysDestroyed.coindays)
+        )
+        if since is not None:
+            query = query.filter(CoinDaysDestroyed.timestamp >= since)
+
+        destroyed = query.first()[0]
+        return round(float(destroyed), 5) if destroyed != None else 0.0
+
     def total_transactions(self, use_cache=True):
         if use_cache:
             return self.cache.total_transactions
@@ -490,6 +518,9 @@ class DatabaseSession(object):
 
         if 'transactions' not in ignore or 'transactedvalue' not in ignore:
             network_stats.update(self.transaction_stats(since=since))
+
+        if 'coindaysdestroyed' not in ignore:
+            network_stats.update(self.coindays_stats(since=since))
 
         return network_stats
 

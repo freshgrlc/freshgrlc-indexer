@@ -481,9 +481,9 @@ class DatabaseSession(object):
                 sqlfunc.sum(CoinDaysDestroyed.coindays)
             )
             if since is not None:
-                query = query.filter(CoinDaysDestroyed.timestamp >= since)
+                query = query.filter(CoinDaysDestroyed.timestamp >= datetime.utcfromtimestamp(since))
             query = query.group_by(
-                sqlfunc.floor(CoinDaysDestroyed.timestamp / interval)
+                sqlfunc.floor(sqlfunc.to_seconds(CoinDaysDestroyed.timestamp) / interval)
             ).order_by(
                 CoinDaysDestroyed.timestamp.asc()
             )

@@ -224,7 +224,7 @@ class DatabaseSession(object):
             return None
 
         segwit_base58_version = self.coin['segwit_info']['address_version'] if (
-                                    'segwit_info' in self.coin and
+                                    self.coin['segwit_info'] is not None and
                                     'address_version' in self.coin['segwit_info']
                                 ) else None
 

@@ -424,8 +424,11 @@ class Transaction(Base):
     firstseen = Column(DateTime())
     relayedby = Column(String(48))
     confirmation_id = Column('confirmation', BigInteger, ForeignKey('blocktx.id'), unique=True)
+    doublespends_id = Column('doublespends', BigInteger, ForeignKey('transaction.id'))
+    in_mempool = Column('mempool', Boolean)
 
     confirmation = relationship('BlockTransaction', foreign_keys=[confirmation_id])
+    doublespends = relationship('Transaction', foreign_keys=[doublespends_id])
     blockreferences = relationship('BlockTransaction', back_populates='transaction', foreign_keys=[BlockTransaction.transaction_id], cascade='save-update, merge, delete')
     coinbaseinfo = relationship('CoinbaseInfo', back_populates='transaction', uselist=False)
     txinputs = relationship('TransactionInput', back_populates='transaction', cascade='save-update, merge, delete')

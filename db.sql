@@ -258,10 +258,14 @@ CREATE TABLE `transaction` (
   `firstseen` datetime DEFAULT NULL,
   `relayedby` varchar(48) DEFAULT NULL,
   `confirmation` bigint(20) DEFAULT NULL,
+  `doublespends` bigint(20) DEFAULT NULL,
+  `mempool` tinyint(1) AS (IF(ISNULL(`confirmation`) AND ISNULL(`doublespends`), '1', '0')),
   PRIMARY KEY (`id`),
   UNIQUE KEY `txid` (`txid`),
   UNIQUE KEY `confirmation` (`confirmation`),
-  CONSTRAINT `fk_transaction_confirmation` FOREIGN KEY (`confirmation`) REFERENCES `blocktx` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION
+  KEY `mempool` (`mempool`),
+  CONSTRAINT `fk_transaction_confirmation` FOREIGN KEY (`confirmation`) REFERENCES `blocktx` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION,
+  CONSTRAINT `fk_transaction_doublespends` FOREIGN KEY (`doublespends`) REFERENCES `transaction` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 

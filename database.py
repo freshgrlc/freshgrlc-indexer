@@ -899,10 +899,23 @@ class DatabaseSession(object):
             self.session.add(blockref)
             self.session.flush()
 
-        self.session.execute('UPDATE `transaction` SET `confirmation` = :blockref WHERE `id` = :tx_id;', {'blockref': blockref.id, 'tx_id': tx_id})
+        self.session.execute('UPDATE `transaction` SET `confirmation` = :blockref, `doublespends` = NULL WHERE `id` = :tx_id;', {'blockref': blockref.id, 'tx_id': tx_id})
         self.session.execute('UPDATE `txout` LEFT JOIN `txin` ON `txout`.`id` = `txin`.`input` SET `spentby` = `txin`.`id` WHERE `txin`.`transaction` = :tx_id;', {
             'tx_id': tx_id
         })
+
+        # Add doublespent reference to any transaction spending the same inputs
+        self.session.execute(
+            '''
+                UPDATE `transaction`
+                    INNER JOIN `txin` AS `allinputs` ON `transaction`.`id` = `allinputs`.`transaction`
+                    INNER JOIN `txin` ON `txin`.`input` = `allinputs`.`input`
+                SET `transaction`.`doublespends` = :tx_id
+                    WHERE `txin`.`transaction` = :tx_id
+                    AND `allinputs`.`transaction` != :tx_id;
+            ''', {
+                'tx_id': tx_id
+            })
 
         ##
         ##  Process address balance updates.

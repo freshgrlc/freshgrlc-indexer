@@ -6,6 +6,7 @@ from cachetools import TTLCache
 from datetime import datetime
 from time import sleep, time
 from traceback import print_exc
+from sqlalchemy.orm import aliased
 from sys import version_info, argv
 
 from coinsupport import Daemon
@@ -30,6 +31,8 @@ class Context(Configuration):
         self.migration_type = 'init'
         self.migration_last_id = None
         self.coindays_destroyed_calc_last_block_id = 1
+        self.last_synced_blk = None
+        self.last_mempool_check_blk = None
 
     def __enter__(self):
         return self
@@ -115,6 +118,7 @@ class Context(Configuration):
         next_commit = time() + 3
         for height in range(ancestor_height + 1, chain_height + 1):
             newblock = self.import_blockheight(height, commit=False)
+            self.last_synced_blk = newblock.hash
             if next_commit <= time():
                 log_block_event(hexlify(newblock.hash), 'Commit')
                 self.db.session.commit()
@@ -196,6 +200,10 @@ class Context(Configuration):
         ).limit(amount_at_once).all()
 
         if len(results) == 0:
+            try:
+                self.coindays_destroyed_calc_last_block_id = self.db.session.query(Block.id).order_by(Block.id.desc()).first()[0] + 1
+            except TypeError:
+                pass
             return False
 
         for _, block_timestamp, tx in results:
@@ -235,6 +243,48 @@ class Context(Configuration):
         self.db.session.commit()
 
         self.coindays_destroyed_calc_last_block_id = max([result[0] for result in results])
+        return True
+
+    def check_mempool_for_doublespends(self):
+        if self.last_mempool_check_blk == self.last_synced_blk:
+            return False
+
+        work_done = 0
+
+        for unconfirmed_coinbase_tx, coinbaseinfo in self.db.mempool_query(result_columns=(Transaction, CoinbaseInfo)).join(Transaction.coinbaseinfo).all():
+            height = coinbaseinfo.height
+            if height is None or height > self.db.chaintip().height:
+                continue
+            unconfirmed_coinbase_tx.doublespends_id = self.db.chaintip().coinbaseinfo.transaction_id
+            self.db.session.add(unconfirmed_coinbase_tx)
+            log_tx_event(hexlify(unconfirmed_coinbase_tx.txid), 'DSpent', coinbase=True, height=height)
+            work_done += 1
+
+        if not work_done:
+            DoubleSpendTransaction = aliased(Transaction)
+            for double_spend_tx, parent_tx_id, parent_txid in self.db.mempool_query(
+                result_columns=(Transaction, DoubleSpendTransaction.id, DoubleSpendTransaction.txid)
+            ).join(
+                Transaction.txinputs
+            ).join(
+                TransactionInput.input
+            ).join(
+                DoubleSpendTransaction,
+                TransactionOutput.transaction
+            ).filter(
+                DoubleSpendTransaction.doublespends_id != None
+            ).group_by(Transaction.id).all():
+                double_spend_tx.doublespends_id = parent_tx_id
+                self.db.session.add(unconfirmed_coinbase_tx)
+                log_tx_event(hexlify(unconfirmed_coinbase_tx.txid), 'DSpent', parent=hexlify(parent_txid))
+                work_done += 1
+
+        if work_done == 0:
+            self.last_mempool_check_blk = self.last_synced_blk
+            return False
+
+        log_event('Commit', '%d' % work_done, 'double spent transactions')
+        self.db.session.commit()
         return True
 
     def migrate_old_data(self):
@@ -377,6 +427,9 @@ def indexer(context):
 
         context.query_mempool()
         if context.sync_blocks():
+            return True
+
+        if context.check_mempool_for_doublespends():
             return True
 
         timeout = time() + 3

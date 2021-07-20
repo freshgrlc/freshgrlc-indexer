@@ -287,7 +287,7 @@ CREATE TABLE `txin` (
   KEY `fk_transaction_idx` (`transaction`),
   KEY `fk_txin_input_idx` (`input`),
   CONSTRAINT `fk_txin_input` FOREIGN KEY (`input`) REFERENCES `txout` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-  CONSTRAINT `fk_txin_transaction` FOREIGN KEY (`transaction`) REFERENCES `transaction` (`id`)
+  CONSTRAINT `fk_txin_transaction` FOREIGN KEY (`transaction`) REFERENCES `transaction` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 

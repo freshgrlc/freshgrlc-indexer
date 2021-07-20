@@ -275,8 +275,8 @@ class Context(Configuration):
                 DoubleSpendTransaction.doublespends_id != None
             ).group_by(Transaction.id).all():
                 double_spend_tx.doublespends_id = parent_tx_id
-                self.db.session.add(unconfirmed_coinbase_tx)
-                log_tx_event(hexlify(unconfirmed_coinbase_tx.txid), 'DSpent', parent=hexlify(parent_txid))
+                self.db.session.add(double_spend_tx)
+                log_tx_event(hexlify(double_spend_tx.txid), 'DSpent', parent=hexlify(parent_txid))
                 work_done += 1
 
         if work_done == 0:

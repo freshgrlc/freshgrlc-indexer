@@ -315,6 +315,7 @@ class DatabaseSession(object):
                 TransactionOutput.spentby_id == None,
                 TransactionInput.id == None,
                 Transaction.confirmation != None,
+                Transaction.doublespends_id == None,
                 or_(
                     CoinbaseInfo.block_id == None,
                     Block.height <= self.current_coinbase_confirmation_height()
@@ -325,6 +326,7 @@ class DatabaseSession(object):
                 Address.address == address,
                 TransactionOutput.spentby_id == None,
                 TransactionInput.id == None,
+                Transaction.doublespends_id == None,
                 or_(
                     CoinbaseInfo.block_id == None,
                     Block.height <= self.current_coinbase_confirmation_height()
@@ -339,7 +341,7 @@ class DatabaseSession(object):
         } for result, transaction in query.order_by(TransactionOutput.id).offset(start).limit(limit).all() ]
 
 
-    def query_transactions(self, include_confirmation_info=False, confirmed_only=False):
+    def query_transactions(self, include_confirmation_info=False, confirmed_only=False, include_double_spents=False):
         if include_confirmation_info:
             query = self.session.query(
                 Transaction,
@@ -358,12 +360,12 @@ class DatabaseSession(object):
         if confirmed_only:
             query = query.filter(Transaction.confirmation_id != None)
 
-        return query
+        return query.filter(Transaction.doublespends_id == None) if not include_double_spents else query
 
     def transaction(self, txid, include_confirmation_info=False):
         if len(txid) == 64:
             txid = unhexlify(txid)
-        result = self.query_transactions(include_confirmation_info=include_confirmation_info).filter(Transaction.txid == txid).first()
+        result = self.query_transactions(include_confirmation_info=include_confirmation_info, include_double_spents=True).filter(Transaction.txid == txid).first()
         return result if not include_confirmation_info else result[0] if result != None else None
 
     def transaction_internal_id(self, txid):
@@ -544,8 +546,11 @@ class DatabaseSession(object):
     def richlist(self, limit, start=0):
         return [ { 'address': v[0], 'balance': v[1] } for v in self.session.query(Address.address, Address.balance).order_by(Address.balance.desc()).limit(limit).offset(start).all() ]
 
+    def mempool_query(self, result_columns=(Transaction,)):
+        return self.session.query(*result_columns).filter(Transaction.in_mempool == True)
+
     def mempool(self):
-        return self.session.query(Transaction).filter(Transaction.confirmation_id == None).filter(Transaction.coinbaseinfo == None).order_by(Transaction.id.desc()).all()
+        return self.mempool_query().order_by(Transaction.id.desc()).all()
 
     def import_blockinfo(self, blockinfo, tx_resolver=None, commit=True):
         # Genesis block workaround

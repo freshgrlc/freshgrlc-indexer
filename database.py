@@ -913,11 +913,13 @@ class DatabaseSession(object):
         self.session.execute(
             '''
                 UPDATE `transaction`
-                    INNER JOIN `txin` AS `allinputs` ON `transaction`.`id` = `allinputs`.`transaction`
-                    INNER JOIN `txin` ON `txin`.`input` = `allinputs`.`input`
+                    INNER JOIN `txin` ON `transaction`.`id` = `txin`.`transaction`
                 SET `transaction`.`doublespends` = :tx_id
-                    WHERE `txin`.`transaction` = :tx_id
-                    AND `allinputs`.`transaction` != :tx_id;
+                    WHERE `txin`.`input` IN (
+                        SELECT `txin`.`input` FROM `txin`
+                            WHERE `txin`.`transaction` = :tx_id
+                    )
+                    AND `txin`.`transaction` != :tx_id;
             ''', {
                 'tx_id': tx_id
             })

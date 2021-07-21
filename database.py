@@ -104,7 +104,10 @@ class Cache(object):
 
 
 class DatabaseSession(object):
-    coin = coins.by_ticker(Configuration.COIN_TICKER)
+    try:
+        coin = coins.by_ticker(Configuration.COIN_TICKER)
+    except AttributeError:
+        coin = None
 
     def __init__(self, session, address_cache, txid_cache, utxo_cache=None):
         self.session = session
@@ -217,7 +220,7 @@ class DatabaseSession(object):
     def _get_base_address(self, address):
         try:
             addr_type, version, hash = decode_any_address(address.encode('utf-8'), bech32_prefix=self.coin['bech32_prefix'])
-        except ValueError:
+        except (ValueError, TypeError):
             return None
 
         if addr_type == 'bech32' and 'segwit_info' not in self.coin:

@@ -1130,63 +1130,24 @@ class DatabaseSession(object):
         log_balance_event(address_s, 'Update')
         start_time = time()
 
-        utxos = self.session.query(TransactionOutput).filter(TransactionOutput.address_id == address.id, TransactionOutput.spentby_id == None).count()
-        skip = utxos > 5000
-
-        if not skip:
-            self.session.execute("""
-                UPDATE `address` SET `balance_dirty` = '0', `balance` = (
-                    SELECT COALESCE(SUM(`txout`.`amount`), 0.0)
-                        FROM `txout`
-                            JOIN `transaction` ON `txout`.`transaction` = `transaction`.`id`
-                        WHERE `txout`.`address` = :address_id
-                            AND `txout`.`spentby` IS NULL
-                            AND `transaction`.`confirmation` IS NOT NULL
-                    UNION
-                    SELECT \'0.0\'
-                        LIMIT 1
-                ) WHERE `address`.`id` = :address_id;
-            """, {
-                'address_id': address.id
-            })
-        else:
-            self.session.execute('UPDATE `address` SET `balance_dirty` = \'2\' WHERE `address`.`id` = :address_id;', {
-                'address_id': address.id
-            })
+        self.session.execute("""
+            UPDATE `address` SET `balance_dirty` = '0', `balance` = (
+                SELECT COALESCE(SUM(`txout`.`amount`), 0.0)
+                    FROM `txout`
+                        JOIN `transaction` ON `txout`.`transaction` = `transaction`.`id`
+                    WHERE `txout`.`address` = :address_id
+                        AND `txout`.`spentby` IS NULL
+                        AND `transaction`.`confirmation` IS NOT NULL
+                UNION
+                SELECT \'0.0\'
+                    LIMIT 1
+            ) WHERE `address`.`id` = :address_id;
+        """, {
+            'address_id': address.id
+        })
 
         self.session.commit()
-
-        if not skip:
-            log_balance_event(address_s, 'Updated', time='%3d msec' % int((time() - start_time) * 1000), utxos=utxos)
-        else:
-            log_balance_event(address_s, 'Skipped', utxos=utxos)
-
-    def update_address_balance_slow(self, address):
-        address_s = address.address if address.address is not None else ' < RAW >'
-        log_balance_event(address_s, 'Update')
-        start_time = time()
-
-        address.balance_dirty = 3
-        self.session.add(address)
-        self.session.commit()
-
-        balance = self.get_address_balance(address)
-        self.session.expire(address)
-        self.session.rollback()
-
-        if address.balance_dirty == 3:
-            address.balance_dirty = 0
-            address.balance = balance
-            self.session.add(address)
-            self.session.commit()
-            log_balance_event(address_s, 'Updated', balance=str(balance), time='%d secs' % (time() - start_time))
-        else:
-            log_balance_event(address_s, 'Abort')
-
-
-    def reset_slow_address_balance_updates(self):
-        self.session.execute('UPDATE `address` SET `balance_dirty` = \'2\' WHERE `balance_dirty` = \'3\';');
-        self.session.commit()
+        log_balance_event(address_s, 'Updated', time='%3d msec' % int((time() - start_time) * 1000))
 
 
 class DatabaseIO(DatabaseSession):

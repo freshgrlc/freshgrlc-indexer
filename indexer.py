@@ -165,14 +165,6 @@ class Context(Configuration):
         self.db.update_address_balance(dirty_address)
         return True
 
-    def update_single_balance_background(self):
-        self.db.reset_session()
-        dirty_address = self.db.next_dirty_address(check_for_id=2, random_address=True)
-        if dirty_address is None:
-            return False
-        self.db.update_address_balance_slow(dirty_address)
-        return True
-
     def update_coindays_destroyed(self, amount_at_once=50):
         self.db.reset_session()
 
@@ -456,11 +448,6 @@ def indexer(context):
     do_in_loop(operation=main_loop, before_sleep=lambda: log_event('Synced', 'chn', ''))
 
 
-def background_task(context):
-    context.db.reset_slow_address_balance_updates()
-    do_in_loop(operation=context.update_single_balance_background, before_sleep=lambda: log_event('Synced', 'chn', ''), interval=30)
-
-
 def main(func, db_timeout=30):
     with Context(db_timeout) as c:
         try:
@@ -470,7 +457,4 @@ def main(func, db_timeout=30):
 
 
 if __name__ == '__main__':
-    if not '-B' in argv and not '--background-job' in argv:
-        main(indexer)
-    else:
-        main(background_task, db_timeout=300)
+    main(indexer)

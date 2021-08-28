@@ -1,3 +1,4 @@
+import __main__
 import socket
 
 from binascii import hexlify, unhexlify
@@ -15,6 +16,8 @@ from database import DatabaseIO
 from models import Address, Block, BlockTransaction, CoinbaseInfo, CoinDaysDestroyed, Mutation, Transaction, TransactionInput, TransactionOutput
 from config import Configuration
 from logger import log, log_event, log_block_event, log_tx_event
+from pidfile import make_pidfile
+
 
 if version_info[0] > 2:
     import http.client as httplib
@@ -395,21 +398,28 @@ def do_until_timeout(operation, timeout):
     return False
 
 
-def do_in_loop(operation, before_sleep=None, interval=1):
+def do_in_loop(operation, before_sleep=None, after_first_run=None, interval=1):
     working = False
+    first_run = True
     while True:
         if working is None:
             working = True
-        elif working == False:
+        elif working is False:
             working = None
 
         if operation():
             continue
 
-        if working:
+        if working and before_sleep is not None:
             before_sleep()
 
         working = False
+
+        if first_run:
+            if after_first_run is not None:
+                after_first_run()
+            first_run = False
+
         sleep(interval)
 
 
@@ -445,7 +455,7 @@ def indexer(context):
     context.sync_blocks(initial=True)
 
     log('\nSwitching to live tracking of mempool and chaintip.\n')
-    do_in_loop(operation=main_loop, before_sleep=lambda: log_event('Synced', 'chn', ''))
+    do_in_loop(operation=main_loop, before_sleep=lambda: log_event('Synced', 'chn', ''), after_first_run=lambda: make_pidfile(__main__))
 
 
 def main(func, db_timeout=30):

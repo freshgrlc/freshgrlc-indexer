@@ -1,5 +1,8 @@
 from os import getpid, path
 
+from logger import log_event
+
+
 RUNDIR = '/run'
 FILEEXT = '.pid'
 
@@ -9,3 +12,4 @@ def make_pidfile(module):
     pidfile = path.join(RUNDIR, basename + FILEEXT)
     with open(pidfile, 'w') as f:
         f.write(str(getpid()))
+    log_event('Wrote', 'PID', pidfile)

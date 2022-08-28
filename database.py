@@ -583,7 +583,7 @@ class DatabaseSession(object):
                 self.session.flush()
 
             self._chaintip = None
-            return
+            return block
 
         if not self.cache.is_valid(ids=Cache.ALL_IDS):
             self.session.flush()

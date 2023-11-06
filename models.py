@@ -180,6 +180,7 @@ class Address(Base):
             Mutation.transaction
         ).filter(
             Address.id == self.id,
+            Transaction.confirmation == None,
             Transaction.in_mempool == True
         ).all()[0][1]
         return pending if pending != None else 0.0

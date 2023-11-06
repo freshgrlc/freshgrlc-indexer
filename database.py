@@ -550,7 +550,7 @@ class DatabaseSession(object):
         return [ { 'address': v[0], 'balance': v[1] } for v in self.session.query(Address.address, Address.balance).order_by(Address.balance.desc()).limit(limit).offset(start).all() ]
 
     def mempool_query(self, result_columns=(Transaction,)):
-        return self.session.query(*result_columns).filter(Transaction.in_mempool == True)
+        return self.session.query(*result_columns).filter(Transaction.confirmation == None, Transaction.in_mempool == True)
 
     def mempool(self):
         return self.mempool_query().order_by(Transaction.id.desc()).all()

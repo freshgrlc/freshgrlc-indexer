@@ -263,6 +263,7 @@ CREATE TABLE `transaction` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `txid` (`txid`),
   UNIQUE KEY `confirmation` (`confirmation`),
+  KEY `has_confirmation` (`confirmation`),
   KEY `mempool` (`mempool`),
   CONSTRAINT `fk_transaction_confirmation` FOREIGN KEY (`confirmation`) REFERENCES `blocktx` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION,
   CONSTRAINT `fk_transaction_doublespends` FOREIGN KEY (`doublespends`) REFERENCES `transaction` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION
